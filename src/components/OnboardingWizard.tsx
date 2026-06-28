@@ -37,7 +37,21 @@ export const OnboardingWizard: React.FC = () => {
 
   const [copied, setCopied] = useState(false);
 
-  const nextStep = () => setState(prev => ({ ...prev, step: prev.step + 1 }));
+  const nextStep = () => {
+    const next = state.step + 1;
+    setState(prev => ({ ...prev, step: next }));
+    // Track onboarding progression
+    fetch('/api/logs/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'onboarding_step_completed',
+        step: state.step,
+        businessName: state.businessName,
+        businessId: state.businessId
+      })
+    }).catch(console.error);
+  };
   const prevStep = () => setState(prev => ({ ...prev, step: prev.step - 1 }));
 
   const copySnippet = () => {

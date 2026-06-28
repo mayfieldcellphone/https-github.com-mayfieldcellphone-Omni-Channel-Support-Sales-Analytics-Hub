@@ -681,8 +681,20 @@ app.post("/api/leads/:id/sync", (req, res) => {
   res.json({ success: true, platform, message: `Successfully synchronized ${lead.name} with ${platform} pipeline.` });
 });
 
+// Tracking endpoint for onboarding and events
+app.post("/api/logs/track", async (req, res) => {
+  const { event, step, businessName, businessId } = req.body;
+  const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Agent";
+  const user = (req.headers["x-user-email"] as string) || "anonymous@visitor.com";
+  
+  const action = `[TRACK] ${event} - Step ${step} (${businessName || businessId})`;
+  addAuditLog(role, user, action, "INFO", req.ip);
+  
+  res.json({ success: true });
+});
+
 // Get Audit Logs
-app.get("/api/logs", (req, res) => {
+app.get("/api/logs", async (req, res) => {
   const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
   const user = (req.headers["x-user-email"] as string) || "operator@central.com";
 
