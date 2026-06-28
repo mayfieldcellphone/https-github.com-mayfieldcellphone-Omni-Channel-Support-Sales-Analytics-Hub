@@ -210,11 +210,11 @@ export default function LeadsManager({
 
     setTimeout(async () => {
       // Gatekeeper Pre-flight Check
-      if (biz.subscription_status === "suspended") {
+      if (biz.subscription_status !== "active") {
         setSimLogs(prev => [
           ...prev,
-          `❌ [GATEKEEPER BLOCKED] Firebase pre-flight check failed! subscription_status is 'suspended' for tenant '${biz.name}'. Access revoked.`,
-          `🚨 [PAYMENT RECOGNITION] AI reply and automated lead capture cancelled due to suspended subscription status. Pushed event: PAYMENT_REQUIRED.`
+          `❌ [GATEKEEPER BLOCKED] Firebase pre-flight check failed! subscription_status is not 'active' for tenant '${biz.name}'. Access revoked.`,
+          `🚨 [PAYMENT RECOGNITION] AI reply and automated lead capture cancelled due to inactive/suspended subscription status. Pushed event: PAYMENT_REQUIRED.`
         ]);
         setIsSimulating(false);
         return;
@@ -541,9 +541,9 @@ export const handleWhatsAppLeadWebhook = functions.https.onRequest(async (req, r
     setIsEditingValue(false);
   };
 
-  // Find if any company currently in leads views is suspended to trigger Payment Required Alert
-  const hasSuspendedBusiness = businesses.some(b => b.subscription_status === "suspended");
-  const suspendedBizList = businesses.filter(b => b.subscription_status === "suspended");
+  // Find if any company currently in leads views is not active to trigger Payment Required Alert
+  const hasSuspendedBusiness = businesses.some(b => b.subscription_status !== "active");
+  const suspendedBizList = businesses.filter(b => b.subscription_status !== "active");
 
   return (
     <div className="space-y-6">
@@ -1315,7 +1315,7 @@ export const handleWhatsAppLeadWebhook = functions.https.onRequest(async (req, r
                 >
                   {businesses.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.name} ({b.subscription_status === "suspended" ? "SUSPENDED 🔒" : "ACTIVE ✔️"})
+                      {b.name} ({b.subscription_status !== "active" ? "SUSPENDED 🔒" : "ACTIVE ✔️"})
                     </option>
                   ))}
                 </select>

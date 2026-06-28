@@ -56,6 +56,9 @@ export interface Business {
   stripe_connected?: boolean;
   service_fee_percentage?: number;
   weekend_fee_applied?: boolean;
+  websiteUrl?: string;
+  knowledgeBaseText?: string;
+  ownerEmail?: string;
 }
 
 export interface Lead {
