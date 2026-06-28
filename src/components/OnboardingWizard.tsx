@@ -263,7 +263,7 @@ export const OnboardingWizard: React.FC = () => {
           
           <button
             onClick={state.step === 3 ? handleLaunch : nextStep}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-xl font-semibold shadow-lg shadow-indigo-500/30 transition-all active:scale-95"
+            className="flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white px-6 py-2 rounded-xl font-semibold shadow-lg shadow-blue-500/30 transition-all active:scale-95"
           >
             {state.step === 3 ? 'Launch' : 'Continue'}
             {state.step < 3 && <ChevronRight size={20} />}
@@ -273,3 +273,5 @@ export const OnboardingWizard: React.FC = () => {
     </div>
   );
 };
+
+

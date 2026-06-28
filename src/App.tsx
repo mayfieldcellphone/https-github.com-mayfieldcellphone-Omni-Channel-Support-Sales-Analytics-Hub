@@ -336,32 +336,32 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 text-slate-900 font-sans" id="applet-core-layout">
+    <div className="flex h-screen w-screen overflow-hidden bg-white text-slate-900 font-sans" id="applet-core-layout">
       
       {/* Left Sidebar */}
-      <aside className="w-64 bg-emerald-50/95 text-emerald-900 flex flex-col border-r border-emerald-200/60 shrink-0">
-        <div className="p-6 flex items-center gap-3 border-b border-emerald-200/60">
-          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center font-bold text-white shadow-md">O</div>
-          <span className="text-xl font-bold text-emerald-950 tracking-tight">OmniHub AI</span>
+      <aside className="w-64 bg-slate-950 text-slate-300 flex flex-col border-r border-slate-800 shrink-0">
+        <div className="p-6 flex items-center gap-3 border-b border-slate-800">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow-md">O</div>
+          <span className="text-xl font-bold text-white tracking-tight">OmniHub AI</span>
         </div>
 
         {/* Active Portfolio Switcher & Onboarding Trigger */}
-        <div className="p-4 mx-3 my-3 bg-white/70 border border-emerald-200/50 rounded-2xl space-y-2">
+        <div className="p-4 mx-3 my-3 bg-slate-900/50 border border-slate-800 rounded-2xl space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[9px] uppercase font-mono text-emerald-800 font-bold tracking-wider">
+            <span className="text-[9px] uppercase font-mono text-slate-400 font-bold tracking-wider">
               Active Portfolio
             </span>
-            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" title="Scope active"></span>
+            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" title="Scope active"></span>
           </div>
           
           <select
             value={selectedBizId}
             onChange={(e) => setSelectedBizId(e.target.value)}
-            className="w-full bg-emerald-100/50 border border-emerald-200/80 rounded-xl px-2.5 py-1.5 text-emerald-950 text-xs font-semibold focus:outline-none focus:border-emerald-600 transition cursor-pointer font-sans"
+            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-200 text-xs font-semibold focus:outline-none focus:border-blue-500 transition cursor-pointer font-sans"
             id="global-sidebar-portfolio-selector"
           >
             {businesses.map((b) => (
-              <option key={b.id} value={b.id} className="text-slate-800 bg-white">
+              <option key={b.id} value={b.id} className="text-slate-200 bg-slate-900">
                 {b.name}
               </option>
             ))}
@@ -372,7 +372,7 @@ export default function App() {
               setActiveTab("chatbots");
               setOnboardTriggerActive(true);
             }}
-            className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg transition flex items-center justify-center gap-1 shadow-sm shadow-emerald-700/10 cursor-pointer font-sans"
+            className="w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg transition flex items-center justify-center gap-1 shadow-sm shadow-blue-900/20 cursor-pointer font-sans"
             id="sidebar-onboard-new-btn"
           >
             <Plus size={10} /> Onboard New Portfolio
@@ -380,12 +380,12 @@ export default function App() {
         </div>
         
         <nav className="flex-1 p-4 pt-1 space-y-1 text-sm overflow-y-auto">
-          <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700/80">Main Dashboard</div>
+          <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Main Dashboard</div>
           
           <button
             onClick={() => setActiveTab("analytics")}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left cursor-pointer ${
-              activeTab === "analytics" ? "bg-emerald-600 text-white shadow-sm" : "text-emerald-800 hover:bg-emerald-100/70 hover:text-emerald-950"
+              activeTab === "analytics" ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:bg-slate-900 hover:text-white"
             }`}
           >
             <TrendingUp size={16} /> Sales Analytics
@@ -394,18 +394,18 @@ export default function App() {
           <button
             onClick={() => setActiveTab("leads")}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left cursor-pointer ${
-              activeTab === "leads" ? "bg-emerald-600 text-white shadow-sm" : "text-emerald-800 hover:bg-emerald-100/70 hover:text-emerald-950"
+              activeTab === "leads" ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:bg-slate-900 hover:text-white"
             }`}
           >
             <Users size={16} /> Inbound CRM Leads
           </button>
 
-          <div className="pt-6 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700/80">Customer Service</div>
+          <div className="pt-6 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Customer Service</div>
 
           <button
             onClick={() => setActiveTab("chatbots")}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left cursor-pointer ${
-              activeTab === "chatbots" ? "bg-emerald-600 text-white shadow-sm" : "text-emerald-800 hover:bg-emerald-100/70 hover:text-emerald-950"
+              activeTab === "chatbots" ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:bg-slate-900 hover:text-white"
             }`}
           >
             <Bot size={16} /> AI Chatbot Config
@@ -414,28 +414,28 @@ export default function App() {
           <button
             onClick={() => setActiveTab("simulator")}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left cursor-pointer ${
-              activeTab === "simulator" ? "bg-emerald-600 text-white shadow-sm" : "text-emerald-800 hover:bg-emerald-100/70 hover:text-emerald-950"
+              activeTab === "simulator" ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:bg-slate-900 hover:text-white"
             }`}
           >
             <Sliders size={16} /> Omni-Channel Simulator
           </button>
 
-          <div className="pt-6 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700/80">Security & Admin</div>
+          <div className="pt-6 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Security & Admin</div>
 
           <button
             onClick={() => setActiveTab("security")}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left cursor-pointer ${
-              activeTab === "security" ? "bg-emerald-600 text-white shadow-sm" : "text-emerald-800 hover:bg-emerald-100/70 hover:text-emerald-950"
+              activeTab === "security" ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:bg-slate-900 hover:text-white"
             }`}
           >
             <Shield size={16} /> Audit Logs & RBAC
           </button>
         </nav>
         
-        <div className="p-4 border-t border-emerald-200/60 space-y-3">
-          <div className="flex items-center justify-between text-[10px] text-emerald-700 font-mono">
-            <span className="flex items-center gap-1.5 font-semibold text-emerald-800">
-              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> Secure Session
+        <div className="p-4 border-t border-slate-800 space-y-3">
+          <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono">
+            <span className="flex items-center gap-1.5 font-semibold text-slate-400">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Secure Session
             </span>
             <button
               onClick={() => {
@@ -450,14 +450,14 @@ export default function App() {
               <LogOut size={11} /> Exit
             </button>
           </div>
-          <div className="flex items-center gap-2 text-[10px] text-emerald-600/70 font-mono">
+          <div className="flex items-center gap-2 text-[10px] text-slate-600/70 font-mono">
             LAST AUDIT: 14:22 UTC
           </div>
         </div>
       </aside>
 
       {/* Main Workspace */}
-      <main className="flex-1 flex flex-col overflow-hidden bg-slate-50 text-slate-900">
+      <main className="flex-1 flex flex-col overflow-hidden bg-white text-slate-900">
         
         {/* Clean White Header */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
@@ -471,7 +471,7 @@ export default function App() {
             </h2>
             <span className="h-4 w-px bg-slate-200"></span>
             <div className="text-xs text-slate-400">
-              Global System Health: <span className="text-emerald-600 font-semibold">Optimal</span>
+              Global System Health: <span className="text-green-600 font-semibold">Optimal</span>
             </div>
           </div>
 
@@ -492,7 +492,7 @@ export default function App() {
             {/* Effortless Export button */}
             <button
               onClick={handleExportCSVReport}
-              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-sans text-xs font-semibold rounded-lg transition duration-150 flex items-center gap-2 shadow-sm shrink-0 cursor-pointer"
+              className="px-3.5 py-1.5 bg-blue-700 hover:bg-blue-600 text-white font-sans text-xs font-semibold rounded-lg transition duration-150 flex items-center gap-2 shadow-sm shrink-0 cursor-pointer"
               id="export-csv-report-btn"
             >
               <FileSpreadsheet size={14} /> Export CSV Report
@@ -504,7 +504,7 @@ export default function App() {
         <div className="flex-1 overflow-y-auto p-8 space-y-6">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-full space-y-3">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
               <p className="text-xs text-slate-500 font-mono uppercase tracking-wider animate-pulse">
                 Synchronizing database nodes...
               </p>
@@ -568,7 +568,7 @@ export default function App() {
         <footer className="bg-white border-t border-slate-200 py-3 px-8 flex justify-between items-center text-[10px] text-slate-400 font-mono shrink-0">
           <span>© 2026 CENTRAL MULTI-BUSINESS SUITE</span>
           <span className="flex items-center gap-1.5 text-slate-400">
-            <Lock size={10} className="text-indigo-500" /> SECURED SECURE-AUDITED PROTOCOL ACTIVE
+            <Lock size={10} className="text-blue-500" /> SECURED SECURE-AUDITED PROTOCOL ACTIVE
           </span>
         </footer>
 
@@ -577,17 +577,17 @@ export default function App() {
       {/* Floating Global Onboarding & Support AI Assistant */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
         {isGlobalAiOpen && (
-          <div className="w-80 sm:w-96 h-[480px] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden mb-4 animate-fade-in text-white font-sans">
+          <div className="w-80 sm:w-96 h-[480px] bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden mb-4 animate-fade-in text-white font-sans">
             {/* Header */}
-            <div className="bg-slate-950 p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
+            <div className="bg-black p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-sm shadow-inner relative">
+                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-sm shadow-inner relative">
                   🧠
-                  <span className="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-slate-950 animate-pulse"></span>
+                  <span className="absolute bottom-0 right-0 w-2 h-2 bg-green-400 rounded-full border border-slate-950 animate-pulse"></span>
                 </div>
                 <div>
                   <h4 className="text-xs font-bold text-white font-sans">OmniHub AI Onboarding</h4>
-                  <p className="text-[9px] text-emerald-400 font-mono">Live Support & Co-Pilot</p>
+                  <p className="text-[9px] text-green-400 font-mono">Live Support & Co-Pilot</p>
                 </div>
               </div>
               <button
@@ -599,8 +599,8 @@ export default function App() {
             </div>
 
             {/* Quick Suggestions Banner */}
-            <div className="px-3 py-2 bg-indigo-950/40 border-b border-indigo-900/20 text-[10px] text-indigo-300 flex items-center gap-1.5 shrink-0">
-              <Sparkles size={11} className="text-indigo-400 shrink-0" />
+            <div className="px-3 py-2 bg-blue-950/40 border-b border-blue-900/20 text-[10px] text-blue-300 flex items-center gap-1.5 shrink-0">
+              <Sparkles size={11} className="text-blue-400 shrink-0" />
               <span>Select a guided flow or type a custom question below.</span>
             </div>
 
@@ -612,14 +612,14 @@ export default function App() {
                   className={`flex gap-2 max-w-[85%] ${msg.sender === "customer" ? "ml-auto flex-row-reverse" : "mr-auto"}`}
                 >
                   <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-xs ${
-                    msg.sender === "customer" ? "bg-slate-800 text-slate-300" : "bg-emerald-600 text-white"
+                    msg.sender === "customer" ? "bg-slate-800 text-slate-300" : "bg-blue-600 text-white"
                   }`}>
                     {msg.sender === "customer" ? <User size={10} /> : <span>🧠</span>}
                   </div>
                   <div className="space-y-1">
                     <div className={`px-3 py-2 rounded-xl text-xs leading-relaxed whitespace-pre-wrap ${
                       msg.sender === "customer"
-                        ? "bg-emerald-600 text-white rounded-tr-none font-medium"
+                        ? "bg-blue-600 text-white rounded-tr-none font-medium"
                         : "bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-none font-light"
                     }`}>
                       {msg.text}
@@ -630,13 +630,13 @@ export default function App() {
 
               {isGlobalAiTyping && (
                 <div className="flex gap-2 max-w-[80%] mr-auto">
-                  <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center bg-emerald-600 text-white text-xs">
+                  <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center bg-blue-600 text-white text-xs">
                     🧠
                   </div>
                   <div className="bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl rounded-tl-none flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></span>
-                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></span>
-                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></span>
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></span>
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></span>
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></span>
                   </div>
                 </div>
               )}
@@ -650,7 +650,7 @@ export default function App() {
                   setOnboardTriggerActive(true);
                   setIsGlobalAiOpen(false);
                 }}
-                className="px-2 py-1 bg-indigo-500/15 hover:bg-indigo-500/25 text-[10px] text-indigo-400 border border-indigo-500/20 rounded-md transition duration-150 flex items-center gap-1 cursor-pointer font-sans"
+                className="px-2 py-1 bg-blue-500/15 hover:bg-blue-500/25 text-[10px] text-blue-400 border border-blue-500/20 rounded-md transition duration-150 flex items-center gap-1 cursor-pointer font-sans"
               >
                 🚀 Onboard a New Business
               </button>
@@ -658,7 +658,7 @@ export default function App() {
                 onClick={() => {
                   handleSendGlobalAiMessage("How do I embed the chatbot widget or lead capture webform on my website?");
                 }}
-                className="px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-[10px] text-emerald-400 border border-emerald-500/20 rounded-md transition duration-150 flex items-center gap-1 cursor-pointer font-sans"
+                className="px-2 py-1 bg-green-500/15 hover:bg-green-500/25 text-[10px] text-green-400 border border-green-500/20 rounded-md transition duration-150 flex items-center gap-1 cursor-pointer font-sans"
               >
                 📋 Embed Codes Setup
               </button>
@@ -680,11 +680,11 @@ export default function App() {
                 onChange={(e) => setGlobalAiInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSendGlobalAiMessage()}
                 placeholder="Ask me how to configure or integrate..."
-                className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-sans"
+                className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 font-sans"
               />
               <button
                 onClick={() => handleSendGlobalAiMessage()}
-                className="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition duration-150 flex items-center justify-center cursor-pointer"
+                className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition duration-150 flex items-center justify-center cursor-pointer"
               >
                 <Send size={14} />
               </button>
@@ -695,7 +695,7 @@ export default function App() {
         {/* Pulsing Assistant Toggle Button */}
         <button
           onClick={() => setIsGlobalAiOpen(!isGlobalAiOpen)}
-          className="w-14 h-14 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition duration-150 relative cursor-pointer group"
+          className="w-14 h-14 bg-blue-600 hover:bg-blue-500 text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition duration-150 relative cursor-pointer group"
           id="global-onboarding-ai-assistant-btn"
           title="Open AI Onboarding Assistant"
         >
@@ -704,7 +704,7 @@ export default function App() {
           ) : (
             <>
               <Sparkles size={24} className="animate-pulse" />
-              <span className="absolute -top-1 -right-1 bg-indigo-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full border-2 border-slate-50 animate-bounce">
+              <span className="absolute -top-1 -right-1 bg-blue-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full border-2 border-slate-50 animate-bounce">
                 AI Help
               </span>
             </>

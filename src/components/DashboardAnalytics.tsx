@@ -699,7 +699,7 @@ export default function DashboardAnalytics({
                       </p>
                     </div>
                   </div>
-                  <div className="pt-2 border-t border-slate-900 flex justify-between items-center text-[10px] font-mono text-indigo-400 uppercase">
+                  <div className="pt-2 border-t border-slate-900 flex justify-between items-center text-[10px] font-mono text-blue-400 uppercase">
                     <span>Audit Diagnostic Check</span>
                     <span className="text-slate-500">Verified</span>
                   </div>
@@ -713,7 +713,7 @@ export default function DashboardAnalytics({
       {/* Row 3: Business Portfolios */}
       <div className="space-y-4" id="portfolio-list">
         <h3 className="text-lg font-bold text-slate-900 font-sans flex items-center gap-2">
-          <Briefcase size={20} className="text-indigo-600" /> Multi-Business Operations Portfolios
+          <Briefcase size={20} className="text-blue-600" /> Multi-Business Operations Portfolios
         </h3>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -722,20 +722,20 @@ export default function DashboardAnalytics({
             return (
               <div 
                 key={biz.id} 
-                className="bg-white border border-slate-100 p-6 rounded-xl flex flex-col justify-between hover:border-indigo-500/40 hover:shadow-md transition duration-300 group card-shadow"
+                className="bg-white border border-slate-100 p-6 rounded-xl flex flex-col justify-between hover:border-blue-500/40 hover:shadow-md transition duration-300 group card-shadow"
               >
                 <div className="space-y-3">
                   <div className="flex justify-between items-start">
                     <span className="px-2.5 py-1 text-[10px] uppercase font-mono tracking-wider bg-slate-50 text-slate-600 rounded-lg border border-slate-200">
                       {biz.category}
                     </span>
-                    <span className="text-xs font-semibold text-emerald-600 flex items-center gap-0.5 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100">
+                    <span className="text-xs font-semibold text-green-600 flex items-center gap-0.5 bg-green-50 px-2 py-0.5 rounded-lg border border-green-100">
                       Conv: {biz.conversionRate}%
                     </span>
                   </div>
 
                   <div>
-                    <h4 className="text-md font-bold text-slate-900 group-hover:text-indigo-600 transition">
+                    <h4 className="text-md font-bold text-slate-900 group-hover:text-blue-600 transition">
                       {biz.name}
                     </h4>
                     <p className="text-xs text-slate-500 line-clamp-2 mt-1">
@@ -752,7 +752,7 @@ export default function DashboardAnalytics({
                   
                   <button 
                     onClick={() => onSelectBusinessTab(biz.id)}
-                    className="px-3 py-1.5 bg-slate-50 hover:bg-indigo-600 hover:text-white text-slate-700 hover:border-transparent border border-slate-200 rounded-lg transition duration-200 flex items-center gap-1 text-xs font-medium cursor-pointer"
+                    className="px-3 py-1.5 bg-slate-50 hover:bg-blue-600 hover:text-white text-slate-700 hover:border-transparent border border-slate-200 rounded-lg transition duration-200 flex items-center gap-1 text-xs font-medium cursor-pointer"
                   >
                     AI Config <ChevronRight size={14} />
                   </button>
@@ -766,3 +766,8 @@ export default function DashboardAnalytics({
     </div>
   );
 }
+ );
+}
+
+}
+

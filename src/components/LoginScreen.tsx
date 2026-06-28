@@ -872,36 +872,36 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
   }
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-tr from-emerald-50 via-teal-50 to-green-100 flex flex-col justify-center items-center p-4 sm:p-6 relative overflow-y-auto font-sans selection:bg-emerald-500/30 selection:text-emerald-900" id="premium-auth-container">
+    <div className="min-h-screen w-full bg-gradient-to-tr from-slate-50 via-blue-50 to-slate-100 flex flex-col justify-center items-center p-4 sm:p-6 relative overflow-y-auto font-sans selection:bg-blue-500/30 selection:text-blue-900" id="premium-auth-container">
       
       {/* Decorative High-Fidelity Grids and Radial Light Leaks */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#a7f3d0_1px,transparent_1px),linear-gradient(to_bottom,#a7f3d0_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-20 pointer-events-none"></div>
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#e2e8f0_1px,transparent_1px),linear-gradient(to_bottom,#e2e8f0_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-20 pointer-events-none"></div>
       
-      <div className="absolute top-10 left-10 w-72 sm:w-96 h-72 sm:h-96 bg-emerald-600/10 rounded-full filter blur-[100px] animate-pulse pointer-events-none"></div>
-      <div className="absolute bottom-10 right-10 w-72 sm:w-96 h-72 sm:h-96 bg-teal-600/10 rounded-full filter blur-[100px] animate-pulse pointer-events-none"></div>
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-emerald-500/5 rounded-full filter blur-[120px] pointer-events-none"></div>
+      <div className="absolute top-10 left-10 w-72 sm:w-96 h-72 sm:h-96 bg-blue-600/10 rounded-full filter blur-[100px] animate-pulse pointer-events-none"></div>
+      <div className="absolute bottom-10 right-10 w-72 sm:w-96 h-72 sm:h-96 bg-slate-600/10 rounded-full filter blur-[100px] animate-pulse pointer-events-none"></div>
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-500/5 rounded-full filter blur-[120px] pointer-events-none"></div>
 
-      <div className="w-full max-w-lg bg-white/95 backdrop-blur-xl border border-emerald-200/80 rounded-[2rem] shadow-[0_25px_50px_-12px_rgba(16,185,129,0.15)] overflow-hidden relative z-10 my-4 transition duration-300 hover:border-emerald-300/80">
+      <div className="w-full max-w-lg bg-white/95 backdrop-blur-xl border border-slate-200/80 rounded-[2rem] shadow-[0_25px_50px_-12px_rgba(37,99,235,0.15)] overflow-hidden relative z-10 my-4 transition duration-300 hover:border-blue-300/80">
         
         {/* Dynamic Gradient Top Edge */}
-        <div className="h-[3px] bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600"></div>
+        <div className="h-[3px] bg-gradient-to-r from-blue-500 via-slate-500 to-blue-600"></div>
 
         <div className="p-6 sm:p-10 space-y-6">
           
           {/* Header Identity Branding */}
           <div className="flex flex-col items-center text-center space-y-3">
             <div className="relative group cursor-pointer">
-              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 opacity-30 group-hover:opacity-70 blur transition duration-300"></div>
-              <div className="relative w-14 h-14 rounded-2xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600">
-                <Cpu size={26} className="animate-spin text-emerald-600" style={{ animationDuration: "16s" }} />
+              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-blue-500 to-slate-500 opacity-30 group-hover:opacity-70 blur transition duration-300"></div>
+              <div className="relative w-14 h-14 rounded-2xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600">
+                <Cpu size={26} className="animate-spin text-blue-600" style={{ animationDuration: "16s" }} />
               </div>
             </div>
             <div>
-              <div className="inline-flex items-center gap-1 bg-emerald-100 border border-emerald-200/60 text-emerald-700 text-[10px] font-mono px-2.5 py-0.5 rounded-full uppercase tracking-wider font-semibold mb-2">
+              <div className="inline-flex items-center gap-1 bg-blue-100 border border-blue-200/60 text-blue-700 text-[10px] font-mono px-2.5 py-0.5 rounded-full uppercase tracking-wider font-semibold mb-2">
                 <Sparkles size={10} /> Multi-Tenant SaaS
               </div>
-              <h1 className="text-2xl font-bold text-emerald-950 tracking-tight font-sans">OmniHub AI Workspace</h1>
-              <p className="text-xs text-emerald-800 mt-1.5 max-w-xs sm:max-w-md font-light leading-relaxed">
+              <h1 className="text-2xl font-bold text-slate-950 tracking-tight font-sans">OmniHub AI Workspace</h1>
+              <p className="text-xs text-slate-800 mt-1.5 max-w-xs sm:max-w-md font-light leading-relaxed">
                 Connect your brand customer Service bots, monitor CRM live leads, and configure secure AI routing systems.
               </p>
             </div>
@@ -909,21 +909,21 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
 
           {sessionUser ? (
             /* --- ACTIVE SESSION DETECTED BLOCK --- */
-            <div className="bg-emerald-50/60 border border-emerald-200 p-6 rounded-2xl space-y-5 animate-fade-in" id="active-session-card">
+            <div className="bg-blue-50/60 border border-blue-200 p-6 rounded-2xl space-y-5 animate-fade-in" id="active-session-card">
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-emerald-600/10 border border-emerald-500/30 flex items-center justify-center text-2xl shadow-inner">
+                <div className="w-12 h-12 rounded-xl bg-blue-600/10 border border-blue-500/30 flex items-center justify-center text-2xl shadow-inner">
                   {sessionUser.avatar}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="text-[10px] font-mono text-emerald-600 uppercase tracking-wider block font-semibold">Active Session Detected</span>
-                  <h3 className="text-sm font-semibold text-emerald-950 truncate font-sans mt-0.5">{sessionUser.name}</h3>
-                  <p className="text-xs text-emerald-800 truncate mt-0.5">{sessionUser.email}</p>
+                  <span className="text-[10px] font-mono text-blue-600 uppercase tracking-wider block font-semibold">Active Session Detected</span>
+                  <h3 className="text-sm font-semibold text-slate-950 truncate font-sans mt-0.5">{sessionUser.name}</h3>
+                  <p className="text-xs text-slate-800 truncate mt-0.5">{sessionUser.email}</p>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] bg-white p-3 rounded-xl border border-emerald-100">
-                <span className="text-emerald-800 font-sans">Authorized RBAC Access:</span>
-                <span className="font-mono text-emerald-700 font-semibold bg-emerald-100/50 border border-emerald-200/30 px-2 py-0.5 rounded-md">
+              <div className="flex items-center justify-between text-[11px] bg-white p-3 rounded-xl border border-blue-100">
+                <span className="text-slate-800 font-sans">Authorized RBAC Access:</span>
+                <span className="font-mono text-blue-700 font-semibold bg-blue-100/50 border border-blue-200/30 px-2 py-0.5 rounded-md">
                   {sessionUser.role}
                 </span>
               </div>
@@ -934,7 +934,7 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
                   onClick={() => {
                     window.location.hash = "#/dashboard/analytics";
                   }}
-                  className="py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold font-sans transition flex items-center justify-center gap-2 cursor-pointer shadow-lg"
+                  className="py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold font-sans transition flex items-center justify-center gap-2 cursor-pointer shadow-lg"
                 >
                   <LayoutDashboard size={14} />
                   <span>Enter Dashboard</span>
@@ -942,7 +942,7 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
                 <button
                   type="button"
                   onClick={onLogout}
-                  className="py-3 bg-emerald-50 hover:bg-emerald-100/80 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold font-sans transition flex items-center justify-center gap-2 cursor-pointer"
+                  className="py-3 bg-slate-50 hover:bg-slate-100/80 text-slate-800 border border-slate-200 rounded-xl text-xs font-semibold font-sans transition flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <LogOut size={14} />
                   <span>Sign Out</span>
@@ -954,45 +954,45 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
             <div className="py-6 space-y-5 text-center animate-fade-in" id="auth-handshake-console">
               <div className="flex justify-center items-center">
                 <div className="relative flex items-center justify-center">
-                  <div className="absolute w-20 h-20 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                  <div className="absolute w-28 h-28 border border-teal-500/20 border-b-transparent rounded-full animate-spin" style={{ animationDirection: "reverse", animationDuration: "3s" }}></div>
-                  <div className="w-14 h-14 bg-emerald-50 border border-emerald-200 rounded-full flex items-center justify-center text-emerald-600 shadow-inner">
-                    <Lock size={22} className="animate-pulse text-emerald-600" />
+                  <div className="absolute w-20 h-20 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="absolute w-28 h-28 border border-slate-500/20 border-b-transparent rounded-full animate-spin" style={{ animationDirection: "reverse", animationDuration: "3s" }}></div>
+                  <div className="w-14 h-14 bg-blue-50 border border-blue-200 rounded-full flex items-center justify-center text-blue-600 shadow-inner">
+                    <Lock size={22} className="animate-pulse text-blue-600" />
                   </div>
                 </div>
               </div>
 
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h3 className="text-xs font-semibold text-emerald-950 uppercase tracking-widest font-mono flex items-center justify-center gap-1.5">
-                    <Terminal size={12} className="text-emerald-600 animate-pulse" />
+                  <h3 className="text-xs font-semibold text-slate-950 uppercase tracking-widest font-mono flex items-center justify-center gap-1.5">
+                    <Terminal size={12} className="text-blue-600 animate-pulse" />
                     Securing Connection
                   </h3>
-                  <p className="text-[10px] text-emerald-800 font-mono">
-                    Provider: <span className="text-emerald-600 font-semibold">{authProvider.toUpperCase()}</span> • {activeTab === "login" ? loginEmail : signupEmail}
+                  <p className="text-[10px] text-slate-800 font-mono">
+                    Provider: <span className="text-blue-600 font-semibold">{authProvider.toUpperCase()}</span> • {activeTab === "login" ? loginEmail : signupEmail}
                   </p>
                 </div>
 
-                <div className="max-w-md mx-auto bg-emerald-950 border border-emerald-800 rounded-2xl p-4 text-left space-y-2 font-mono text-[10px] text-emerald-200 h-36 overflow-y-auto shadow-inner leading-relaxed">
+                <div className="max-w-md mx-auto bg-slate-950 border border-slate-800 rounded-2xl p-4 text-left space-y-2 font-mono text-[10px] text-blue-200 h-36 overflow-y-auto shadow-inner leading-relaxed">
                   {handshakeLogs.map((log, idx) => (
                     <div key={idx} className="flex items-start gap-2">
-                      <span className="text-emerald-400 font-bold select-none">❯</span>
+                      <span className="text-blue-400 font-bold select-none">❯</span>
                       <span>{log}</span>
                       {idx === handshakeLogs.length - 1 && handshakeStep < 4 ? (
-                        <span className="inline-block w-1.5 h-3.5 bg-emerald-400 animate-pulse ml-0.5 shrink-0 align-middle"></span>
+                        <span className="inline-block w-1.5 h-3.5 bg-blue-400 animate-pulse ml-0.5 shrink-0 align-middle"></span>
                       ) : null}
                     </div>
                   ))}
                 </div>
 
-                <div className="flex justify-center items-center gap-2 text-[9px] font-mono text-emerald-800">
-                  <span className={`w-1.5 h-1.5 rounded-full ${handshakeStep >= 1 ? "bg-emerald-500 animate-ping" : "bg-emerald-200"}`}></span>
+                <div className="flex justify-center items-center gap-2 text-[9px] font-mono text-slate-800">
+                  <span className={`w-1.5 h-1.5 rounded-full ${handshakeStep >= 1 ? "bg-blue-500 animate-ping" : "bg-slate-200"}`}></span>
                   <span>TLS Match</span>
                   <span className="opacity-40">•</span>
-                  <span className={`w-1.5 h-1.5 rounded-full ${handshakeStep >= 3 ? "bg-emerald-400 animate-ping" : "bg-emerald-200"}`}></span>
+                  <span className={`w-1.5 h-1.5 rounded-full ${handshakeStep >= 3 ? "bg-blue-400 animate-ping" : "bg-slate-200"}`}></span>
                   <span>Isolation Map</span>
                   <span className="opacity-40">•</span>
-                  <span className={`w-1.5 h-1.5 rounded-full ${handshakeStep >= 4 ? "bg-emerald-500" : "bg-emerald-200"}`}></span>
+                  <span className={`w-1.5 h-1.5 rounded-full ${handshakeStep >= 4 ? "bg-blue-500" : "bg-slate-200"}`}></span>
                   <span>Session OK</span>
                 </div>
               </div>
@@ -1002,14 +1002,14 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
             <div className="space-y-5">
               
               {/* Segmented Controller Switcher */}
-              <div className="bg-emerald-100/50 p-1 rounded-2xl border border-emerald-200/50 flex relative">
+              <div className="bg-slate-100/50 p-1 rounded-2xl border border-slate-200/50 flex relative">
                 <button
                   type="button"
                   onClick={() => handleTabChange("login")}
                   className={`flex-1 py-2.5 rounded-xl text-xs font-semibold tracking-wide font-sans transition-all duration-300 cursor-pointer ${
                     activeTab === "login"
-                      ? "bg-white text-emerald-800 shadow border border-emerald-200/50"
-                      : "text-emerald-700 hover:text-emerald-950"
+                      ? "bg-white text-slate-800 shadow border border-slate-200/50"
+                      : "text-slate-700 hover:text-slate-950"
                   }`}
                   id="tab-btn-login"
                 >
@@ -1020,8 +1020,8 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
                   onClick={() => handleTabChange("signup")}
                   className={`flex-1 py-2.5 rounded-xl text-xs font-semibold tracking-wide font-sans transition-all duration-300 cursor-pointer ${
                     activeTab === "signup"
-                      ? "bg-white text-emerald-800 shadow border border-emerald-200/50"
-                      : "text-emerald-700 hover:text-emerald-950"
+                      ? "bg-white text-slate-800 shadow border border-slate-200/50"
+                      : "text-slate-700 hover:text-slate-950"
                   }`}
                   id="tab-btn-signup"
                 >
@@ -1039,8 +1039,8 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
 
               {/* Success messages */}
               {successMessage && (
-                <div className="text-[11px] text-emerald-700 font-medium font-sans flex items-start gap-2 bg-emerald-50 border border-emerald-200 p-3 rounded-xl animate-pulse">
-                  <CheckCircle2 size={15} className="shrink-0 mt-0.5 text-emerald-600" />
+                <div className="text-[11px] text-blue-700 font-medium font-sans flex items-start gap-2 bg-blue-50 border border-blue-200 p-3 rounded-xl animate-pulse">
+                  <CheckCircle2 size={15} className="shrink-0 mt-0.5 text-blue-600" />
                   <span>{successMessage}</span>
                 </div>
               )}
@@ -1051,15 +1051,15 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
                   
                   {/* Email Entry */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono text-emerald-800 uppercase tracking-wider block font-semibold">Enterprise Email Address</label>
+                    <label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block font-semibold">Enterprise Email Address</label>
                     <div className="relative flex items-center">
-                      <Mail size={14} className="absolute left-3.5 text-emerald-600/70" />
+                      <Mail size={14} className="absolute left-3.5 text-blue-600/70" />
                       <input
                         type="email"
                         value={loginEmail}
                         onChange={(e) => setLoginEmail(e.target.value)}
                         required
-                        className="w-full bg-white border border-emerald-200 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition duration-200 text-xs font-sans placeholder-slate-400"
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition duration-200 text-xs font-sans placeholder-slate-400"
                         placeholder="e.g., admin@mayfieldrepairs.com.au"
                         id="login-email-input"
                       />
@@ -1068,15 +1068,15 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
 
                   {/* Password Entry */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono text-emerald-800 uppercase tracking-wider block font-semibold">Password Key</label>
+                    <label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block font-semibold">Password Key</label>
                     <div className="relative flex items-center">
-                      <Key size={14} className="absolute left-3.5 text-emerald-600/70" />
+                      <Key size={14} className="absolute left-3.5 text-blue-600/70" />
                       <input
                         type="password"
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
                         required
-                        className="w-full bg-white border border-emerald-200 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition duration-200 text-xs font-sans placeholder-slate-400"
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition duration-200 text-xs font-sans placeholder-slate-400"
                         placeholder="••••••••"
                         id="login-password-input"
                       />
@@ -1086,8 +1086,8 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
                   {/* Role Selector Grid */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <label className="text-[10px] font-mono text-emerald-800 uppercase tracking-wider block font-semibold">Assigned Authorization Role</label>
-                      <span className="text-[9px] font-mono text-emerald-700 bg-emerald-100/50 border border-emerald-200/30 px-2 py-0.5 rounded-md font-semibold">Role Base</span>
+                      <label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block font-semibold">Assigned Authorization Role</label>
+                      <span className="text-[9px] font-mono text-blue-700 bg-blue-100/50 border border-blue-200/30 px-2 py-0.5 rounded-md font-semibold">Role Base</span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       {(["Admin", "Manager", "Agent"] as const).map((r) => (
@@ -1097,12 +1097,12 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
                           onClick={() => setLoginRole(r)}
                           className={`py-2 px-1 text-xs font-sans font-semibold rounded-xl border transition-all duration-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
                             loginRole === r
-                              ? "bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm"
-                              : "bg-white border-emerald-100 text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50/40"
+                              ? "bg-blue-50 border-blue-500 text-blue-700 shadow-sm"
+                              : "bg-white border-blue-100 text-blue-600 hover:border-blue-200 hover:bg-blue-50/40"
                           }`}
                         >
                           <span>{r}</span>
-                          <span className="text-[8px] opacity-75 font-mono font-normal text-emerald-600/90">
+                          <span className="text-[8px] opacity-75 font-mono font-normal text-blue-600/90">
                             {r === "Admin" && "All Features"}
                             {r === "Manager" && "Edit Access"}
                             {r === "Agent" && "Simulator Only"}
@@ -1114,7 +1114,7 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
 
                   <button
                     type="submit"
-                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold font-sans transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer group shadow-lg mt-2 relative overflow-hidden"
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold font-sans transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer group shadow-lg mt-2 relative overflow-hidden"
                     id="submit-login-btn"
                   >
                     <span>Authenticate Tenant Connection</span>
@@ -1122,27 +1122,27 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
                   </button>
 
                   {/* Pre-configured Demo Accounts Panel (Great UX) */}
-                  <div className="bg-emerald-50/30 p-3 rounded-2xl border border-emerald-100 mt-3 space-y-2">
-                    <span className="text-[9px] font-mono text-emerald-700 uppercase tracking-wider block font-semibold">Demo Sandbox Credentials</span>
+                  <div className="bg-slate-50/30 p-3 rounded-2xl border border-slate-100 mt-3 space-y-2">
+                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block font-semibold">Demo Sandbox Credentials</span>
                     <div className="grid grid-cols-3 gap-1.5">
                       <button
                         type="button"
                         onClick={() => loadDemoUser("admin@mayfieldrepairs.com.au", "Admin")}
-                        className="py-1.5 px-1 bg-white hover:bg-emerald-50 text-[9px] font-mono text-emerald-800 rounded-lg border border-emerald-200 hover:border-emerald-300 transition text-center cursor-pointer"
+                        className="py-1.5 px-1 bg-white hover:bg-blue-50 text-[9px] font-mono text-slate-800 rounded-lg border border-slate-200 hover:border-blue-300 transition text-center cursor-pointer"
                       >
                         ⚡ Admin (Full)
                       </button>
                       <button
                         type="button"
                         onClick={() => loadDemoUser("manager@mayfieldrepairs.com.au", "Manager")}
-                        className="py-1.5 px-1 bg-white hover:bg-emerald-50 text-[9px] font-mono text-emerald-800 rounded-lg border border-emerald-200 hover:border-emerald-300 transition text-center cursor-pointer"
+                        className="py-1.5 px-1 bg-white hover:bg-blue-50 text-[9px] font-mono text-slate-800 rounded-lg border border-slate-200 hover:border-blue-300 transition text-center cursor-pointer"
                       >
                         ⚡ Manager
                       </button>
                       <button
                         type="button"
                         onClick={() => loadDemoUser("agent@mayfieldrepairs.com.au", "Agent")}
-                        className="py-1.5 px-1 bg-white hover:bg-emerald-50 text-[9px] font-mono text-emerald-800 rounded-lg border border-emerald-200 hover:border-emerald-300 transition text-center cursor-pointer"
+                        className="py-1.5 px-1 bg-white hover:bg-blue-50 text-[9px] font-mono text-slate-800 rounded-lg border border-slate-200 hover:border-blue-300 transition text-center cursor-pointer"
                       >
                         ⚡ Agent (Test)
                       </button>
@@ -1155,15 +1155,15 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     {/* Signup Email */}
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono text-emerald-800 uppercase tracking-wider block font-semibold">Enterprise Email</label>
+                      <label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block font-semibold">Enterprise Email</label>
                       <div className="relative flex items-center">
-                        <Mail size={14} className="absolute left-3.5 text-emerald-600/70" />
+                        <Mail size={14} className="absolute left-3.5 text-blue-600/70" />
                         <input
                           type="email"
                           value={signupEmail}
                           onChange={(e) => setSignupEmail(e.target.value)}
                           required
-                          className="w-full bg-white border border-emerald-200 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition duration-200 text-xs font-sans placeholder-slate-400"
+                          className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition duration-200 text-xs font-sans placeholder-slate-400"
                           placeholder="admin@corp.com"
                           id="signup-email-input"
                         />
@@ -1172,15 +1172,15 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
 
                     {/* Signup Password */}
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono text-emerald-800 uppercase tracking-wider block font-semibold">Password Key</label>
+                      <label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block font-semibold">Password Key</label>
                       <div className="relative flex items-center">
-                        <Key size={14} className="absolute left-3.5 text-emerald-600/70" />
+                        <Key size={14} className="absolute left-3.5 text-blue-600/70" />
                         <input
                           type="password"
                           value={signupPassword}
                           onChange={(e) => setSignupPassword(e.target.value)}
                           required
-                          className="w-full bg-white border border-emerald-200 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition duration-200 text-xs font-sans placeholder-slate-400"
+                          className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition duration-200 text-xs font-sans placeholder-slate-400"
                           placeholder="Min 6 characters"
                           id="signup-password-input"
                         />
@@ -1191,15 +1191,15 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     {/* Business Name */}
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono text-emerald-800 uppercase tracking-wider block font-semibold">Corporate Business Name</label>
+                      <label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block font-semibold">Corporate Business Name</label>
                       <div className="relative flex items-center">
-                        <Building size={14} className="absolute left-3.5 text-emerald-600/70" />
+                        <Building size={14} className="absolute left-3.5 text-blue-600/70" />
                         <input
                           type="text"
                           value={businessName}
                           onChange={(e) => setBusinessName(e.target.value)}
                           required
-                          className="w-full bg-white border border-emerald-200 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition duration-200 text-xs font-sans placeholder-slate-400"
+                          className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition duration-200 text-xs font-sans placeholder-slate-400"
                           placeholder="e.g., Mayfield Cell Repairs"
                           id="signup-bizname-input"
                         />
@@ -1208,13 +1208,13 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
 
                     {/* Industry Category */}
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono text-emerald-800 uppercase tracking-wider block font-semibold">Business Category</label>
+                      <label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block font-semibold">Business Category</label>
                       <div className="relative flex items-center">
-                        <Briefcase size={14} className="absolute left-3.5 text-emerald-600/70 pointer-events-none" />
+                        <Briefcase size={14} className="absolute left-3.5 text-blue-600/70 pointer-events-none" />
                         <select
                           value={businessCategory}
                           onChange={(e) => setBusinessCategory(e.target.value)}
-                          className="w-full bg-white border border-emerald-200 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition duration-200 text-xs font-sans appearance-none cursor-pointer"
+                          className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition duration-200 text-xs font-sans appearance-none cursor-pointer"
                           id="signup-category-select"
                         >
                           <option value="Electronics Repair">Electronics Repair</option>
@@ -1230,15 +1230,15 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
 
                   {/* Welcome Message text-area */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono text-emerald-800 uppercase tracking-wider block font-semibold">AI Bot welcome Message Greeting</label>
+                    <label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block font-semibold">AI Bot welcome Message Greeting</label>
                     <div className="relative flex items-center">
-                      <MessageSquare size={14} className="absolute left-3.5 top-3.5 text-emerald-600/70" />
+                      <MessageSquare size={14} className="absolute left-3.5 top-3.5 text-blue-600/70" />
                       <textarea
                         value={welcomeGreeting}
                         onChange={(e) => setWelcomeGreeting(e.target.value)}
                         required
                         rows={2}
-                        className="w-full bg-white border border-emerald-200 rounded-xl pl-10 pr-4 py-2.5 text-slate-800 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition duration-200 text-xs font-sans leading-relaxed resize-none placeholder-slate-400"
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition duration-200 text-xs font-sans leading-relaxed resize-none placeholder-slate-400"
                         placeholder="Welcome greeting for chatbot..."
                         id="signup-welcome-message"
                       />
@@ -1247,7 +1247,7 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
 
                   {/* Role configuration during registration */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono text-emerald-800 uppercase tracking-wider block font-semibold">Select Authorized Account Role</label>
+                    <label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block font-semibold">Select Authorized Account Role</label>
                     <div className="grid grid-cols-3 gap-2">
                       {(["Admin", "Manager", "Agent"] as const).map((r) => (
                         <button
@@ -1256,12 +1256,12 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
                           onClick={() => setSignupRole(r)}
                           className={`py-2 px-1 text-[11px] font-sans font-semibold rounded-xl border transition-all duration-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
                             signupRole === r
-                              ? "bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm"
-                              : "bg-white border-emerald-100 text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50/40"
+                              ? "bg-blue-50 border-blue-500 text-blue-700 shadow-sm"
+                              : "bg-white border-blue-100 text-blue-600 hover:border-blue-200 hover:bg-blue-50/40"
                           }`}
                         >
                           <span>{r}</span>
-                          <span className="text-[8px] opacity-75 font-mono font-normal text-emerald-600/95">
+                          <span className="text-[8px] opacity-75 font-mono font-normal text-blue-600/95">
                             {r === "Admin" && "Owner"}
                             {r === "Manager" && "Supervisor"}
                             {r === "Agent" && "Operator"}
@@ -1273,7 +1273,7 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
 
                   <button
                     type="submit"
-                    className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-semibold font-sans transition duration-200 flex items-center justify-center gap-2 cursor-pointer group shadow-lg mt-2"
+                    className="w-full py-3 bg-gradient-to-r from-blue-600 to-slate-800 hover:from-blue-500 hover:to-slate-700 text-white rounded-xl text-xs font-semibold font-sans transition duration-200 flex items-center justify-center gap-2 cursor-pointer group shadow-lg mt-2"
                     id="submit-signup-btn"
                   >
                     <span>Register Corporate Tenant & Login</span>
@@ -1284,9 +1284,9 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
 
               {/* Secure Splitter Divider */}
               <div className="relative flex py-2 items-center">
-                <div className="flex-grow border-t border-emerald-200"></div>
-                <span className="flex-shrink mx-4 text-[9px] font-mono text-emerald-700 uppercase tracking-wider font-semibold">Enterprise Single Sign-On</span>
-                <div className="flex-grow border-t border-emerald-200"></div>
+                <div className="flex-grow border-t border-slate-200"></div>
+                <span className="flex-shrink mx-4 text-[9px] font-mono text-slate-500 uppercase tracking-wider font-semibold">Enterprise Single Sign-On</span>
+                <div className="flex-grow border-t border-slate-200"></div>
               </div>
 
               {/* Premium OAuth Buttons */}
@@ -1295,7 +1295,7 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
                 <button
                   type="button"
                   onClick={() => startOAuthFlow("github")}
-                  className="py-3 bg-emerald-900 hover:bg-emerald-800 text-white border border-emerald-800 rounded-xl text-xs font-semibold font-sans transition duration-200 flex items-center justify-center gap-2 cursor-pointer group shadow-inner"
+                  className="py-3 bg-slate-900 hover:bg-black text-white border border-slate-800 rounded-xl text-xs font-semibold font-sans transition duration-200 flex items-center justify-center gap-2 cursor-pointer group shadow-inner"
                   id="oauth-github-btn"
                 >
                   <Github size={15} className="text-white group-hover:scale-110 transition duration-150" />
@@ -1307,7 +1307,7 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
                 <button
                   type="button"
                   onClick={() => startOAuthFlow("google")}
-                  className="py-3 bg-white hover:bg-emerald-50 text-emerald-950 border border-emerald-200 rounded-xl text-xs font-semibold font-sans transition duration-200 flex items-center justify-center gap-2 cursor-pointer group shadow-md"
+                  className="py-3 bg-white hover:bg-blue-50 text-slate-950 border border-slate-200 rounded-xl text-xs font-semibold font-sans transition duration-200 flex items-center justify-center gap-2 cursor-pointer group shadow-md"
                   id="oauth-google-btn"
                 >
                   <svg className="w-3.5 h-3.5 group-hover:scale-110 transition duration-150" viewBox="0 0 24 24" fill="none">
@@ -1325,7 +1325,17 @@ export default function LoginScreen({ sessionUser, onLogin, onLogout }: LoginScr
           )}
 
           {/* Secure Isolated Environment Footer */}
-          <div className="flex items-center justify-center gap-1.5 text-[9px] text-emerald-700 font-mono select-none pt-2 border-t border-emerald-100">
+          <div className="flex items-center justify-center gap-1.5 text-[9px] text-slate-500 font-mono select-none pt-2 border-t border-slate-100">
+            <Shield size={10} className="text-blue-500 animate-pulse" />
+            <span>TENANT DATA ISOLATED • ENCRYPTION KEYS ROTATED DAILY</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+1.5 text-[9px] text-emerald-700 font-mono select-none pt-2 border-t border-emerald-100">
             <Shield size={10} className="text-emerald-500 animate-pulse" />
             <span>TENANT DATA ISOLATED • ENCRYPTION KEYS ROTATED DAILY</span>
           </div>
