@@ -13,28 +13,58 @@ interface LoginScreenProps {
 
 export default function LoginScreen({ onLogin }: LoginScreenProps) {
   const [emailInput, setEmailInput] = useState("admin@mayfieldrepairs.com.au");
+  const [nameInput, setNameInput] = useState("");
   const [roleSelect, setRoleSelect] = useState<"Admin" | "Manager" | "Agent">("Admin");
+  const [isSignUp, setIsSignUp] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [provider, setProvider] = useState<"google" | "github" | null>(null);
   const [handshakeStep, setHandshakeStep] = useState(0);
 
-  const startAuthFlow = (authProvider: "google" | "github") => {
+  const startAuthFlow = async (authProvider: "google" | "github") => {
     setProvider(authProvider);
     setIsAuthenticating(true);
     setHandshakeStep(1);
 
-    // Beautiful animated handshake process
-    setTimeout(() => setHandshakeStep(2), 700);
-    setTimeout(() => setHandshakeStep(3), 1400);
-    setTimeout(() => {
-      onLogin({
-        email: emailInput.trim() || `${authProvider}-user@repairhub-saas.com`,
-        name: emailInput.split("@")[0].replace(/[._-]/g, " "),
-        avatar: authProvider === "github" ? "🐙" : "🌐",
-        provider: authProvider,
-        role: roleSelect,
-      });
-    }, 2100);
+    if (isSignUp) {
+      try {
+        const res = await fetch("/api/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: emailInput.trim() || `${authProvider}-user@repairhub-saas.com`,
+            name: nameInput || emailInput.split("@")[0] || "New User",
+            role: roleSelect,
+            provider: authProvider,
+          })
+        });
+        
+        const userData = await res.json();
+        if (!res.ok) throw new Error(userData.error || "Signup failed");
+
+        setHandshakeStep(2);
+        setTimeout(() => setHandshakeStep(3), 700);
+        setTimeout(() => {
+          onLogin(userData);
+        }, 1400);
+      } catch (e: any) {
+        alert(e.message);
+        setIsAuthenticating(false);
+        setHandshakeStep(0);
+      }
+    } else {
+      // Regular Login Simulation
+      setTimeout(() => setHandshakeStep(2), 700);
+      setTimeout(() => setHandshakeStep(3), 1400);
+      setTimeout(() => {
+        onLogin({
+          email: emailInput.trim() || `${authProvider}-user@repairhub-saas.com`,
+          name: emailInput.split("@")[0].replace(/[._-]/g, " "),
+          avatar: authProvider === "github" ? "🐙" : "🌐",
+          provider: authProvider,
+          role: roleSelect,
+        });
+      }, 2100);
+    }
   };
 
   return (
@@ -53,7 +83,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
           </div>
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">RepairHub SaaS AI Platform</h1>
-            <p className="text-xs text-slate-400">Multi-Tenant Setup & Secure Bot Orchestration</p>
+            <p className="text-xs text-slate-400">{isSignUp ? "Create Your Multi-Tenant Account" : "Multi-Tenant Setup & Secure Bot Orchestration"}</p>
           </div>
         </div>
 
@@ -89,6 +119,35 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
           <div className="space-y-5 animate-fade-in">
             <div className="space-y-4">
               
+              {/* Toggle Sign Up */}
+              <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button 
+                  onClick={() => setIsSignUp(false)}
+                  className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition ${!isSignUp ? "bg-slate-800 text-white" : "text-slate-500 hover:text-slate-300"}`}
+                >
+                  SIGN IN
+                </button>
+                <button 
+                  onClick={() => setIsSignUp(true)}
+                  className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition ${isSignUp ? "bg-slate-800 text-white" : "text-slate-500 hover:text-slate-300"}`}
+                >
+                  SIGN UP
+                </button>
+              </div>
+
+              {isSignUp && (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Full Name</label>
+                  <input
+                    type="text"
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-100 focus:outline-none focus:border-indigo-500 transition duration-150 text-xs font-sans"
+                    placeholder="e.g., John Doe"
+                  />
+                </div>
+              )}
+
               {/* Custom email */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Enterprise Email Domain</label>
@@ -129,14 +188,14 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             {/* Social Login buttons */}
             <div className="space-y-2.5">
               
-              {/* Github Button */}
+               {/* Github Button */}
               <button
                 type="button"
                 onClick={() => startAuthFlow("github")}
                 className="w-full py-3 bg-slate-950 hover:bg-slate-800/80 text-white border border-slate-800 rounded-xl text-xs font-semibold font-sans transition flex items-center justify-center gap-2 cursor-pointer group shadow-sm"
               >
                 <Github size={15} className="text-white group-hover:scale-110 transition duration-150" />
-                <span>Sign in with GitHub Integration</span>
+                <span>{isSignUp ? "Sign up with GitHub Integration" : "Sign in with GitHub Integration"}</span>
                 <ArrowRight size={11} className="text-slate-500 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition duration-150" />
               </button>
 
@@ -152,9 +211,10 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                   <path fillRule="evenodd" clipRule="evenodd" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z" fill="#FBBC05"/>
                   <path fillRule="evenodd" clipRule="evenodd" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
                 </svg>
-                <span>Sign in with Google Account</span>
+                <span>{isSignUp ? "Sign up with Google Account" : "Sign in with Google Account"}</span>
                 <ArrowRight size={11} className="text-slate-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition duration-150" />
               </button>
+
 
             </div>
           </div>

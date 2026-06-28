@@ -22,6 +22,7 @@ import LeadsManager from "./components/LeadsManager";
 import OmniChannelSimulator from "./components/OmniChannelSimulator";
 import SecurityConsole from "./components/SecurityConsole";
 import LoginScreen from "./components/LoginScreen";
+import OnboardingWizard from "./components/OnboardingWizard";
 
 export default function App() {
   // Session Authentication State
@@ -209,6 +210,15 @@ export default function App() {
     );
   }
 
+  if (businesses.length === 0 && !loading) {
+    return (
+      <OnboardingWizard 
+        userEmail={userEmail} 
+        onComplete={() => fetchData()} 
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50 text-slate-900 font-sans" id="applet-core-layout">
       
@@ -307,6 +317,22 @@ export default function App() {
               {activeTab === "simulator" && "Omni-Channel Live Simulation"}
               {activeTab === "security" && "RBAC Authorization & Trace logs"}
             </h2>
+            <span className="h-4 w-px bg-slate-200"></span>
+            
+            {/* Tenant Switcher */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">Business:</span>
+              <select 
+                value={selectedBizId} 
+                onChange={(e) => setSelectedBizId(e.target.value)}
+                className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-indigo-500 transition cursor-pointer"
+              >
+                {businesses.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+
             <span className="h-4 w-px bg-slate-200"></span>
             <div className="text-xs text-slate-400">
               Global System Health: <span className="text-emerald-600 font-semibold">Optimal</span>

@@ -4,6 +4,21 @@ import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dns from "dns";
+import { db } from "./src/lib/firebase";
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  doc, 
+  updateDoc, 
+  getDoc, 
+  query, 
+  where, 
+  setDoc, 
+  orderBy, 
+  limit as firestoreLimit,
+  deleteDoc
+} from "firebase/firestore";
 
 // Fix DNS resolution order to prefer IPv4 over IPv6 where relevant
 dns.setDefaultResultOrder("ipv4first");
@@ -67,344 +82,13 @@ function decryptText(text: string): string {
 }
 
 // -----------------------------------------------------------------------------
-// SECURE IN-MEMORY DATASTORE
+// SECURE FIRESTORE DATASTORE
 // -----------------------------------------------------------------------------
 
-interface FAQ {
-  question: string;
-  answer: string;
-}
+// ... (interfaces stay same) ...
 
-interface KBArticle {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: string;
-  category?: string;
-  tags?: string[];
-}
-
-interface ChatSettings {
-  welcomeMessage: string;
-  tone: string; // professional, friendly, energetic, etc.
-  avatarColor: string;
-  botName?: string;
-  avatarIcon?: string;
-  themeStyle?: string;
-  handoffRules?: string;
-  fewShotExamples?: FAQ[];
-}
-
-interface IntegrationConfig {
-  connected: boolean;
-  apiKey?: string;
-  webhookUrl?: string;
-  syncInterval?: string;
-}
-
-interface Business {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  revenue: number;
-  revenueGrowth: number;
-  leadsCount: number;
-  faqKnowledge: FAQ[];
-  kbArticles?: KBArticle[];
-  chatSettings: ChatSettings;
-  crmIntegrations: {
-    salesforce: IntegrationConfig;
-    hubspot: IntegrationConfig;
-    zoho: IntegrationConfig;
-  };
-  channels: {
-    whatsapp: { connected: boolean; phoneNumber?: string; apiKey?: string };
-    messenger: { connected: boolean; pageId?: string; accessToken?: string };
-  };
-  subscription_status?: "active" | "suspended";
-  subscription_tier?: "BASIC" | "PRO" | "ENTERPRISE";
-  is_payment_confirmed?: boolean;
-  stripe_connected?: boolean;
-  service_fee_percentage?: number;
-  weekend_fee_applied?: boolean;
-}
-
-interface Lead {
-  id: string;
-  businessId: string;
-  name: string;
-  email: string;
-  phone: string;
-  source: "Webform" | "Chat" | "Email" | "WhatsApp" | "Messenger";
-  status: "New" | "Contacted" | "Qualified" | "Proposal" | "Closed Won" | "Closed Lost";
-  value: number;
-  message: string;
-  encryptedDetails: string; // Encrypted contact information & messages
-  aiSummary: string;
-  aiSuggestedAction: string;
-  date: string;
-  notes?: string;
-}
-
-interface SecurityLog {
-  id: string;
-  timestamp: string;
-  role: "Admin" | "Manager" | "Agent";
-  user: string;
-  action: string;
-  ip: string;
-  severity: "INFO" | "WARNING" | "CRITICAL";
-}
-
-// Initial seed data
-let businesses: Business[] = [
-  {
-    id: "biz-1",
-    name: "Mayfield Cellphone Repairs",
-    description: "Premium express repair shop for iPhones, Androids, Tablets, and Laptops.",
-    category: "Device Repairs",
-    revenue: 14850,
-    revenueGrowth: 18.5,
-    leadsCount: 142,
-    faqKnowledge: [
-      { question: "How long does a screen replacement take?", answer: "Screen replacements usually take 30 to 45 minutes. Walk-ins are welcome!" },
-      { question: "What is your warranty policy?", answer: "We provide a lifetime warranty on parts and labor for all repairs, excluding physical or water damage." },
-      { question: "Do you offer diagnostic checks?", answer: "Yes! Diagnostic checks are $19.99, which is fully waived if you proceed with the repair." },
-      { question: "How much is a battery replacement?", answer: "Battery replacements range from $49 to $89 depending on your specific phone model." }
-    ],
-    kbArticles: [
-      {
-        id: "art-1-1",
-        title: "Screen Quality Standards & Guarantee",
-        content: "We use three distinct levels of screen replacements to accommodate different budgets:\n1. OEM-Quality Glass: Meets identical spec as original displays, showing 100% color accuracy, touch responsiveness, and maximum luminance. Best for professional/photo tasks.\n2. Premium Aftermarket: Extremely close match to original glass with 95% brightness profile, excellent tactile feel, and slight cooler color bias. Recommended for standard daily drivers.\n3. Budget-Value Tier: Perfect for basic phones, children's tablets, or older models. Reliable touch capacity but uses thin-bezel glass and reduced maximum brightness.\nAll options include our secure lifetime hardware warrantee.",
-        createdAt: "2026-01-15T10:00:00Z",
-        category: "Quality Standards",
-        tags: ["screen", "guarantee", "repair"]
-      },
-      {
-        id: "art-1-2",
-        title: "Water Damage Survival Steps",
-        content: "If your mobile device is submerged in water:\n1. Power it down immediately. DO NOT turn it on to check if it still works, as this causes catastrophic motherboard shorts.\n2. Wipe external surface water with clean, lint-free towels.\n3. Remove SIM tray, external microSD slot cards, and protective cases.\n4. DO NOT use dry uncooked rice. Rice dust and starch can enter charging/headphone slots and form a sticky paste inside, compounding motherboard damage.\n5. Bring the device to our diagnostic bench within 4 hours. We will open the shielding, run isopropyl cleaning baths, and clear corrosion using ultrasonic pulses.",
-        createdAt: "2026-03-22T14:30:00Z",
-        category: "Emergency Procedures",
-        tags: ["water damage", "emergency", "repair"]
-      }
-    ],
-    chatSettings: {
-      welcomeMessage: "Hi! Welcome to Mayfield Cellphone Repairs. I can give you immediate repair quotes or help book an appointment. What device are we fixing today?",
-      tone: "friendly",
-      avatarColor: "#4f46e5",
-      botName: "Mayfield Repair Assistant",
-      avatarIcon: "🤖",
-      themeStyle: "modern"
-    },
-    crmIntegrations: {
-      salesforce: { connected: true, webhookUrl: "https://api.salesforce.com/services/webhooks/biz-1" },
-      hubspot: { connected: false },
-      zoho: { connected: false }
-    },
-    channels: {
-      whatsapp: { connected: true, phoneNumber: "+1 (555) 482-1928" },
-      messenger: { connected: false }
-    },
-    subscription_status: "active",
-    subscription_tier: "BASIC",
-    is_payment_confirmed: true,
-    stripe_connected: true,
-    service_fee_percentage: 0,
-    weekend_fee_applied: false
-  },
-  {
-    id: "biz-2",
-    name: "SelfRepairKit",
-    description: "Premium DIY mobile phone repair tools and step-by-step assembly replacement kits. You can do this!",
-    category: "DIY Repair Kits",
-    revenue: 11250,
-    revenueGrowth: 15.4,
-    leadsCount: 92,
-    faqKnowledge: [
-      { question: "Are the tools included in the kit?", answer: "Yes, every kit comes fully loaded with customized suction cups, magnetic screwdrivers, spudgers, and premium adhesive seals." },
-      { question: "Can a beginner really do this?", answer: "Absolutely! Over 90% of our customers succeed on their very first attempt. We believe in you: You can do this!" },
-      { question: "What is your return policy for kits?", answer: "We offer a 30-day money-back guarantee on all unused and unopened repair kits." }
-    ],
-    kbArticles: [
-      {
-        id: "art-2-1",
-        title: "First-Time DIY Calibration Guide",
-        content: "After replacing your screen or battery, complete these steps to calibrate the hardware:\n1. For screens: Connect the flex cables firmly, boot the device, and run the built-in screen diagnostic utility.\n2. For batteries: Charge to 100% and continue charging for at least 2 extra hours. Then use the device as normal until it powers off automatically from 0% capacity before recharging back to 100%.\nYou can do this!",
-        createdAt: "2026-02-10T09:15:00Z",
-        category: "Technical Specifications",
-        tags: ["diy", "calibration", "battery", "screen"]
-      }
-    ],
-    chatSettings: {
-      welcomeMessage: "Hey! Let's get your phone fixed. SelfRepairKit has premium DIY tools and replacement parts. What kit do you need today? You can do this!",
-      tone: "energetic",
-      avatarColor: "#059669",
-      botName: "DIY Advisor",
-      avatarIcon: "🛠️",
-      themeStyle: "glass"
-    },
-    crmIntegrations: {
-      salesforce: { connected: false },
-      hubspot: { connected: true, webhookUrl: "https://api.hubapi.com/webhooks/biz-2" },
-      zoho: { connected: false }
-    },
-    channels: {
-      whatsapp: { connected: false },
-      messenger: { connected: true, pageId: "selfrepairkit-fb-102" }
-    },
-    subscription_status: "active",
-    subscription_tier: "PRO",
-    is_payment_confirmed: true,
-    stripe_connected: true,
-    service_fee_percentage: 0,
-    weekend_fee_applied: false
-  },
-  {
-    id: "biz-3",
-    name: "RepairBill",
-    description: "Secure, PCI-compliant SaaS invoicing and payment verification portal for telecom and repair shops.",
-    category: "Billing & Invoicing",
-    revenue: 31200,
-    revenueGrowth: 28.3,
-    leadsCount: 164,
-    faqKnowledge: [
-      { question: "Are my payment details secure?", answer: "Yes. RepairBill utilizes end-to-end PCI-DSS Level 1 compliant gateways, secured via SSL and AES-256 tokens." },
-      { question: "How can I verify my invoice status?", answer: "Enter your 8-digit secure token in our portal or request verification directly through this secure assistant." },
-      { question: "What forms of payment do you support?", answer: "We support Visa, Mastercard, American Express, Apple Pay, and Google Pay securely." }
-    ],
-    kbArticles: [
-      {
-        id: "art-3-1",
-        title: "Billing Dispute and PCI Compliance Overview",
-        content: "All invoices issued through RepairBill are secure.\n- Transaction Safeguards: Every single transaction utilizes temporary tokens. No raw card numbers are ever stored in local database registers.\n- Refund Requests: Merchant-approved refunds are processed through our SSL gateway and reflect on your original payment source within 3-5 bank business days.",
-        createdAt: "2026-04-05T16:00:00Z",
-        category: "Membership Policies",
-        tags: ["billing", "security", "payments"]
-      }
-    ],
-    chatSettings: {
-      welcomeMessage: "Welcome to RepairBill's secure billing assistant. How can I help verify your invoice or solve payment issues securely today?",
-      tone: "professional",
-      avatarColor: "#dc2626",
-      botName: "Secure Billing Bot",
-      avatarIcon: "💳",
-      themeStyle: "modern"
-    },
-    crmIntegrations: {
-      salesforce: { connected: false },
-      hubspot: { connected: false },
-      zoho: { connected: true, webhookUrl: "https://creator.zoho.com/api/v2/repairbill" }
-    },
-    channels: {
-      whatsapp: { connected: true, phoneNumber: "+1 (555) 831-4029" },
-      messenger: { connected: true, pageId: "repairbill-fb-991" }
-    },
-    subscription_status: "active",
-    subscription_tier: "ENTERPRISE",
-    is_payment_confirmed: true,
-    stripe_connected: true,
-    service_fee_percentage: 0,
-    weekend_fee_applied: false
-  }
-];
-
-// Seed leads with encrypted contact detail records
-let leads: Lead[] = [
-  {
-    id: "lead-101",
-    businessId: "biz-1",
-    name: "Sarah Jenkins",
-    email: "sarah.j@gmail.com",
-    phone: "+1 (555) 234-9128",
-    source: "Webform",
-    status: "New",
-    value: 120,
-    message: "Broken iPhone 15 Pro screen. Can you repair it today?",
-    encryptedDetails: encryptText("iPhone 15 Pro Screen Repair. Customer prefers afternoon slots, phone contact only. Current device power status: ON, glass highly shattered."),
-    aiSummary: "Urgently requests a same-day iPhone 15 Pro screen replacement. Device is functional but heavily damaged.",
-    aiSuggestedAction: "Send automated SMS offer for a 3:00 PM slot today at the Mayfield branch.",
-    date: "2026-06-25T10:15:00Z"
-  },
-  {
-    id: "lead-102",
-    businessId: "biz-1",
-    name: "Michael Chen",
-    email: "mchen@yahoo.com",
-    phone: "+1 (555) 761-0022",
-    source: "Chat",
-    status: "Contacted",
-    value: 85,
-    message: "How much to replace a battery on Samsung S22 Ultra?",
-    encryptedDetails: encryptText("Samsung Galaxy S22 Ultra Battery Replacement. Quoted $85. Customer asked about water-resistance seals post-repair. Operator verified we re-apply waterproof adhesive."),
-    aiSummary: "Inquired about S22 Ultra battery replacement price and waterproof seals. Price accepted.",
-    aiSuggestedAction: "Follow up with booking link to seal the appointment.",
-    date: "2026-06-24T15:30:00Z"
-  },
-  {
-    id: "lead-103",
-    businessId: "biz-2",
-    name: "Rebecca Thorne",
-    email: "rebecca.t@outlook.com",
-    phone: "+1 (555) 881-3341",
-    source: "Email",
-    status: "Qualified",
-    value: 150,
-    message: "Requesting dry cleaning pickup for 3 expensive wedding garments.",
-    encryptedDetails: encryptText("Delicate wedding silk gowns. Requires organic GreenEarth solvent only. Preferred pickup time: Thursday 6:00 PM. Address: 1422 Elmwood Dr."),
-    aiSummary: "High-value inquiry for silk dry cleaning with eco-friendly solvents. Requires custom delivery courier.",
-    aiSuggestedAction: "Confirm organic safe dry-clean procedure and send courier tracking link.",
-    date: "2026-06-25T08:00:00Z"
-  },
-  {
-    id: "lead-104",
-    businessId: "biz-3",
-    name: "John Miller",
-    email: "jmiller@wellnesscorp.com",
-    phone: "+1 (555) 442-9900",
-    source: "WhatsApp",
-    status: "Proposal",
-    value: 588,
-    message: "Corporation membership rates for 12 employees.",
-    encryptedDetails: encryptText("Corporate gym membership for WellnessCorp team. Requested pricing proposal for 10-15 standard keycard accounts with monthly invoicing."),
-    aiSummary: "Valuable B2B corporate lead exploring gym memberships for 12 employees.",
-    aiSuggestedAction: "Email formal Corporate Wellness Proposal with 15% bulk discount tier.",
-    date: "2026-06-23T11:20:00Z"
-  }
-];
-
-// Seed security audit logs
-let auditLogs: SecurityLog[] = [
-  {
-    id: "log-1",
-    timestamp: "2026-06-25T13:45:10Z",
-    role: "Admin",
-    user: "mayfieldcellphonerepairs@gmail.com",
-    action: "User Login",
-    ip: "192.168.1.45",
-    severity: "INFO"
-  },
-  {
-    id: "log-2",
-    timestamp: "2026-06-25T13:50:24Z",
-    role: "Admin",
-    user: "mayfieldcellphonerepairs@gmail.com",
-    action: "Decrypted Lead Details (Sarah Jenkins)",
-    ip: "192.168.1.45",
-    severity: "WARNING"
-  },
-  {
-    id: "log-3",
-    timestamp: "2026-06-25T13:55:00Z",
-    role: "Admin",
-    user: "mayfieldcellphonerepairs@gmail.com",
-    action: "Modified Business Chat Settings (biz-1)",
-    ip: "192.168.1.45",
-    severity: "INFO"
-  }
-];
+// Seed Audit logs locally for now or move to Firestore if needed
+let auditLogs: SecurityLog[] = [];
 
 // -----------------------------------------------------------------------------
 // HELPER FOR SECURITY LOGGING
@@ -420,6 +104,8 @@ function addAuditLog(role: "Admin" | "Manager" | "Agent", user: string, action: 
     severity
   };
   auditLogs.unshift(newLog);
+  // Optionally push to Firestore "audit_logs" collection
+  addDoc(collection(db, "audit_logs"), newLog).catch(console.error);
 }
 
 // -----------------------------------------------------------------------------
@@ -427,18 +113,23 @@ function addAuditLog(role: "Admin" | "Manager" | "Agent", user: string, action: 
 // -----------------------------------------------------------------------------
 
 // Get all businesses
-app.get("/api/businesses", (req, res) => {
-  res.json(businesses);
+app.get("/api/businesses", async (req, res) => {
+  try {
+    const querySnapshot = await getDocs(collection(db, "businesses"));
+    const bizList = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    res.json(bizList);
+  } catch (e) {
+    res.status(500).json({ error: "Failed to fetch businesses from Firestore" });
+  }
 });
 
 // Create a new business profile (Multi-tenant routing support)
-app.post("/api/businesses", (req, res) => {
+app.post("/api/businesses", async (req, res) => {
   const { name, description, category, welcomeMessage, whatsappPhoneNumber, whatsappApiKey } = req.body;
   if (!name) {
     return res.status(400).json({ error: "Name is required" });
   }
 
-  // Enforce 5+ separate Business Profiles
   const id = `biz-${Date.now()}`;
   const newBiz: Business = {
     id,
@@ -490,15 +181,19 @@ app.post("/api/businesses", (req, res) => {
     weekend_fee_applied: false
   };
 
-  businesses.push(newBiz);
+  try {
+    await setDoc(doc(db, "businesses", id), newBiz);
+    
+    const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
+    const user = (req.headers["x-user-email"] as string) || "operator@central.com";
+    addAuditLog(role, user, `Created new Business Profile: ${name} (ID: ${id})`, "INFO", req.ip);
 
-  // Log audit event
-  const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
-  const user = (req.headers["x-user-email"] as string) || "operator@central.com";
-  addAuditLog(role, user, `Created new Business Profile: ${name} (ID: ${id})`, "INFO", req.ip);
-
-  res.status(201).json(newBiz);
+    res.status(201).json(newBiz);
+  } catch (e) {
+    res.status(500).json({ error: "Failed to save business to Firestore" });
+  }
 });
+
 
 // Builder Bot Setup Wizard Endpoint: Parses training instructions using Gemini
 app.post("/api/chatbot/builder", async (req, res) => {
@@ -507,12 +202,12 @@ app.post("/api/chatbot/builder", async (req, res) => {
     return res.status(400).json({ error: "Missing businessId or userInput" });
   }
 
-  const index = businesses.findIndex((b) => b.id === businessId);
-  if (index === -1) {
+  const bizDoc = await getDoc(doc(db, "businesses", businessId));
+  if (!bizDoc.exists()) {
     return res.status(404).json({ error: "Business not found" });
   }
-
-  const businessName = businesses[index].name;
+  const business = bizDoc.data() as Business;
+  const businessName = business.name;
   const gemini = getGeminiClient();
 
   if (!gemini) {
@@ -522,17 +217,19 @@ app.post("/api/chatbot/builder", async (req, res) => {
       question: "Imported Instruction Summary",
       answer: cleanInput.length > 300 ? cleanInput.substring(0, 300) + "..." : cleanInput
     };
-    businesses[index].faqKnowledge.push(mockFaq);
+    business.faqKnowledge.push(mockFaq);
 
     // Apply mock recommendations & few shot examples
-    businesses[index].chatSettings.tone = "local service expert";
-    businesses[index].chatSettings.handoffRules = "Escalate to a senior manager or specialist if the customer asks for advanced board-level microscopic solder repairs or files custom warranty claims.";
-    businesses[index].chatSettings.fewShotExamples = [
+    business.chatSettings.tone = "local service expert";
+    business.chatSettings.handoffRules = "Escalate to a senior manager or specialist if the customer asks for advanced board-level microscopic solder repairs or files custom warranty claims.";
+    business.chatSettings.fewShotExamples = [
       {
         question: "Can you fix an iPad screen?",
         answer: "Absolutely! We specialize in rapid local iPad screen replacements with premium-quality components, usually completed the same day."
       }
     ];
+
+    await setDoc(doc(db, "businesses", businessId), business);
 
     const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
     const user = (req.headers["x-user-email"] as string) || "operator@central.com";
@@ -554,7 +251,7 @@ app.post("/api/chatbot/builder", async (req, res) => {
       ],
       faqs: [mockFaq],
       articles: [],
-      business: businesses[index]
+      business
     });
   }
 
@@ -641,7 +338,7 @@ Ensure all keys are double-quoted and it is valid JSON.`;
     if (Array.isArray(faqs)) {
       faqs.forEach((faq: any) => {
         if (faq.question && faq.answer) {
-          businesses[index].faqKnowledge.push({
+          business.faqKnowledge.push({
             question: faq.question.trim(),
             answer: faq.answer.trim()
           });
@@ -662,8 +359,8 @@ Ensure all keys are double-quoted and it is valid JSON.`;
             category: art.category || "General",
             tags: Array.isArray(art.tags) ? art.tags : []
           };
-          businesses[index].kbArticles = businesses[index].kbArticles || [];
-          businesses[index].kbArticles!.push(newArt);
+          business.kbArticles = business.kbArticles || [];
+          business.kbArticles!.push(newArt);
           importedArticles.push(newArt);
         }
       });
@@ -672,23 +369,26 @@ Ensure all keys are double-quoted and it is valid JSON.`;
     // Update recommended settings
     if (recommendedSettings) {
       if (recommendedSettings.tone) {
-        businesses[index].chatSettings.tone = recommendedSettings.tone;
+        business.chatSettings.tone = recommendedSettings.tone;
       }
       if (recommendedSettings.welcomeMessage) {
-        businesses[index].chatSettings.welcomeMessage = recommendedSettings.welcomeMessage;
+        business.chatSettings.welcomeMessage = recommendedSettings.welcomeMessage;
       }
       if (recommendedSettings.handoffRules) {
-        businesses[index].chatSettings.handoffRules = recommendedSettings.handoffRules;
+        business.chatSettings.handoffRules = recommendedSettings.handoffRules;
       }
     }
 
     // Update few-shot examples
     if (Array.isArray(fewShotExamples)) {
-      businesses[index].chatSettings.fewShotExamples = fewShotExamples.map((ex: any) => ({
+      business.chatSettings.fewShotExamples = fewShotExamples.map((ex: any) => ({
         question: ex.question || "",
         answer: ex.answer || ""
       }));
     }
+
+    // Save back to Firestore
+    await setDoc(doc(db, "businesses", businessId), business);
 
     // Log configuration edit
     const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
@@ -708,7 +408,7 @@ Ensure all keys are double-quoted and it is valid JSON.`;
       fewShotExamples,
       faqs,
       articles: importedArticles,
-      business: businesses[index]
+      business
     });
 
   } catch (err: any) {
@@ -724,10 +424,11 @@ app.post("/api/chatbot/github-pull", async (req, res) => {
     return res.status(400).json({ error: "Missing businessId, repoUrl, or filePath" });
   }
 
-  const index = businesses.findIndex((b) => b.id === businessId);
-  if (index === -1) {
+  const bizDoc = await getDoc(doc(db, "businesses", businessId));
+  if (!bizDoc.exists()) {
     return res.status(404).json({ error: "Business not found" });
   }
+  const business = bizDoc.data() as Business;
 
   let cleanRepo = repoUrl.replace("https://github.com/", "").replace("http://github.com/", "");
   if (cleanRepo.endsWith("/")) {
@@ -769,25 +470,26 @@ app.post("/api/chatbot/github-pull", async (req, res) => {
       tags: ["github", cleanRepo.split("/")[1] || "repo"]
     };
 
-    businesses[index].kbArticles = businesses[index].kbArticles || [];
-    businesses[index].kbArticles!.push(newArt);
+    business.kbArticles = business.kbArticles || [];
+    business.kbArticles!.push(newArt);
+    await setDoc(doc(db, "businesses", businessId), business);
 
     const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
     const user = (req.headers["x-user-email"] as string) || "operator@central.com";
-    addAuditLog(role, user, `GitHub Integration pulled file '${filePath}' from ${cleanRepo} for ${businesses[index].name}`, "INFO", req.ip);
+    addAuditLog(role, user, `GitHub Integration pulled file '${filePath}' from ${cleanRepo} for ${business.name}`, "INFO", req.ip);
 
     res.json({
       success: true,
       message: `Successfully pulled '${filePath}' from ${cleanRepo}!`,
       article: newArt,
-      business: businesses[index]
+      business
     });
   } catch (err: any) {
     console.error("GitHub pull failed:", err);
     
     // Self-Healing Fallback
     const fallbackTitle = filePath.split("/").pop() || "GitHub Policy Manual";
-    const fallbackContent = `# GitHub Document Fallback\nThis is a fallback reference document representing your pulled documentation from repository **${cleanRepo}** at path \`${filePath}\`.\n\nOur intelligent backend generated this placeholder based on the domain history for **${businesses[index].name}**.\n\n- Security safeguards: Enabled.\n- Custom support SLA: 2 hours.`;
+    const fallbackContent = `# GitHub Document Fallback\nThis is a fallback reference document representing your pulled documentation from repository **${cleanRepo}** at path \`${filePath}\`.\n\nOur intelligent backend generated this placeholder based on the domain history for **${business.name}**.\n\n- Security safeguards: Enabled.\n- Custom support SLA: 2 hours.`;
     
     const newArt: KBArticle = {
       id: `kb-gh-fallback-${Date.now()}`,
@@ -798,8 +500,9 @@ app.post("/api/chatbot/github-pull", async (req, res) => {
       tags: ["github", "fallback"]
     };
 
-    businesses[index].kbArticles = businesses[index].kbArticles || [];
-    businesses[index].kbArticles!.push(newArt);
+    business.kbArticles = business.kbArticles || [];
+    business.kbArticles!.push(newArt);
+    await setDoc(doc(db, "businesses", businessId), business);
 
     const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
     const user = (req.headers["x-user-email"] as string) || "operator@central.com";
@@ -809,18 +512,19 @@ app.post("/api/chatbot/github-pull", async (req, res) => {
       success: true,
       message: `GitHub pull offline/private. Initialized self-healing fallback article for '${filePath}' successfully!`,
       article: newArt,
-      business: businesses[index]
+      business
     });
   }
 });
 
 // Update business knowledge / chat settings
-app.put("/api/businesses/:id", (req, res) => {
+app.put("/api/businesses/:id", async (req, res) => {
   const { id } = req.params;
-  const index = businesses.findIndex((b) => b.id === id);
-  if (index === -1) {
+  const bizDoc = await getDoc(doc(db, "businesses", id));
+  if (!bizDoc.exists()) {
     return res.status(404).json({ error: "Business not found" });
   }
+  const business = bizDoc.data() as Business;
 
   const { 
     description, 
@@ -837,39 +541,48 @@ app.put("/api/businesses/:id", (req, res) => {
     weekend_fee_applied
   } = req.body;
   
-  if (description !== undefined) businesses[index].description = description;
-  if (faqKnowledge !== undefined) businesses[index].faqKnowledge = faqKnowledge;
-  if (kbArticles !== undefined) businesses[index].kbArticles = kbArticles;
-  if (chatSettings !== undefined) businesses[index].chatSettings = { ...businesses[index].chatSettings, ...chatSettings };
-  if (crmIntegrations !== undefined) businesses[index].crmIntegrations = { ...businesses[index].crmIntegrations, ...crmIntegrations };
-  if (channels !== undefined) businesses[index].channels = { ...businesses[index].channels, ...channels };
-  if (subscription_status !== undefined) businesses[index].subscription_status = subscription_status;
-  if (subscription_tier !== undefined) businesses[index].subscription_tier = subscription_tier;
-  if (is_payment_confirmed !== undefined) businesses[index].is_payment_confirmed = is_payment_confirmed;
-  if (stripe_connected !== undefined) businesses[index].stripe_connected = stripe_connected;
-  if (service_fee_percentage !== undefined) businesses[index].service_fee_percentage = service_fee_percentage;
-  if (weekend_fee_applied !== undefined) businesses[index].weekend_fee_applied = weekend_fee_applied;
+  if (description !== undefined) business.description = description;
+  if (faqKnowledge !== undefined) business.faqKnowledge = faqKnowledge;
+  if (kbArticles !== undefined) business.kbArticles = kbArticles;
+  if (chatSettings !== undefined) business.chatSettings = { ...business.chatSettings, ...chatSettings };
+  if (crmIntegrations !== undefined) business.crmIntegrations = { ...business.crmIntegrations, ...crmIntegrations };
+  if (channels !== undefined) business.channels = { ...business.channels, ...channels };
+  if (subscription_status !== undefined) business.subscription_status = subscription_status;
+  if (subscription_tier !== undefined) business.subscription_tier = subscription_tier;
+  if (is_payment_confirmed !== undefined) business.is_payment_confirmed = is_payment_confirmed;
+  if (stripe_connected !== undefined) business.stripe_connected = stripe_connected;
+  if (service_fee_percentage !== undefined) business.service_fee_percentage = service_fee_percentage;
+  if (weekend_fee_applied !== undefined) business.weekend_fee_applied = weekend_fee_applied;
+
+  await setDoc(doc(db, "businesses", id), business);
 
   // Log configuration edit
   const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
   const user = (req.headers["x-user-email"] as string) || "operator@central.com";
-  addAuditLog(role, user, `Updated configuration settings for ${businesses[index].name}`, "INFO", req.ip);
+  addAuditLog(role, user, `Updated configuration settings for ${business.name}`, "INFO", req.ip);
 
-  res.json(businesses[index]);
+  res.json(business);
 });
 
 // Get all leads
-app.get("/api/leads", (req, res) => {
-  res.json(leads);
+app.get("/api/leads", async (req, res) => {
+  try {
+    const querySnapshot = await getDocs(collection(db, "leads"));
+    const leadsList = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    res.json(leadsList);
+  } catch (e) {
+    res.status(500).json({ error: "Failed to fetch leads" });
+  }
 });
 
 // Get individual decrypted lead data
-app.post("/api/leads/:id/decrypt", (req, res) => {
+app.post("/api/leads/:id/decrypt", async (req, res) => {
   const { id } = req.params;
-  const lead = leads.find((l) => l.id === id);
-  if (!lead) {
+  const leadDoc = await getDoc(doc(db, "leads", id));
+  if (!leadDoc.exists()) {
     return res.status(404).json({ error: "Lead not found" });
   }
+  const lead = leadDoc.data() as Lead;
 
   const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
   const user = (req.headers["x-user-email"] as string) || "operator@central.com";
@@ -888,17 +601,18 @@ app.post("/api/leads/:id/decrypt", (req, res) => {
 });
 
 // Create new lead
-app.post("/api/leads", (req, res) => {
+app.post("/api/leads", async (req, res) => {
   const { businessId, name, email, phone, source, message, value, status, customEncryptedDetails } = req.body;
-  const business = businesses.find((b) => b.id === businessId);
-  if (!business) {
+  const bizDoc = await getDoc(doc(db, "businesses", businessId));
+  if (!bizDoc.exists()) {
     return res.status(404).json({ error: "Business not found" });
   }
+  const business = bizDoc.data() as Business;
 
   const encryptedDetails = encryptText(customEncryptedDetails || `Lead message: ${message}`);
-  
+  const id = `lead-${Date.now()}`;
   const newLead: Lead = {
-    id: `lead-${Date.now()}`,
+    id,
     businessId,
     name,
     email,
@@ -913,22 +627,24 @@ app.post("/api/leads", (req, res) => {
     date: new Date().toISOString()
   };
 
-  leads.unshift(newLead);
+  await setDoc(doc(db, "leads", id), newLead);
+  
   business.leadsCount += 1;
+  await setDoc(doc(db, "businesses", businessId), business);
 
   res.status(201).json(newLead);
 });
 
 // Update lead status
-app.put("/api/leads/:id", (req, res) => {
+app.put("/api/leads/:id", async (req, res) => {
   const { id } = req.params;
-  const index = leads.findIndex((l) => l.id === id);
-  if (index === -1) {
+  const leadDoc = await getDoc(doc(db, "leads", id));
+  if (!leadDoc.exists()) {
     return res.status(404).json({ error: "Lead not found" });
   }
+  const lead = leadDoc.data() as Lead;
 
   const { status, value, notes, name, email, phone } = req.body;
-  const lead = leads[index];
 
   if (status !== undefined) lead.status = status;
   if (value !== undefined) lead.value = Number(value);
@@ -937,12 +653,15 @@ app.put("/api/leads/:id", (req, res) => {
   if (email !== undefined) lead.email = email;
   if (phone !== undefined) lead.phone = phone;
 
+  await setDoc(doc(db, "leads", id), lead);
+
   const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
   const user = (req.headers["x-user-email"] as string) || "operator@central.com";
   addAuditLog(role, user, `Updated status/details for lead: ${lead.name}`, "INFO", req.ip);
 
   res.json(lead);
 });
+
 
 // Export Salesforce/Hubspot manual sync trigger
 app.post("/api/leads/:id/sync", (req, res) => {
@@ -1001,48 +720,58 @@ app.post("/api/logs/clear", (req, res) => {
 });
 
 // Get sales analytics
-app.get("/api/analytics", (req, res) => {
-  const businessSummary = businesses.map((b) => {
-    const bizLeads = leads.filter((l) => l.businessId === b.id);
-    const wonLeads = bizLeads.filter((l) => l.status === "Closed Won");
-    const totalWonValue = wonLeads.reduce((acc, curr) => acc + curr.value, 0);
-    const conversionRate = bizLeads.length > 0 ? Number(((wonLeads.length / bizLeads.length) * 100).toFixed(1)) : 0;
+app.get("/api/analytics", async (req, res) => {
+  try {
+    const bizSnapshot = await getDocs(collection(db, "businesses"));
+    const businesses = bizSnapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Business[];
 
-    return {
-      id: b.id,
-      name: b.name,
-      category: b.category,
-      baseRevenue: b.revenue,
-      wonLeadsRevenue: totalWonValue,
-      totalRevenue: b.revenue + totalWonValue,
-      leadsCount: bizLeads.length,
-      wonLeadsCount: wonLeads.length,
-      conversionRate
-    };
-  });
+    const leadsSnapshot = await getDocs(collection(db, "leads"));
+    const leads = leadsSnapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Lead[];
 
-  // Breakdown of leads by channels
-  const sources = ["Webform", "Chat", "Email", "WhatsApp", "Messenger"];
-  const sourceBreakdown = sources.map((src) => {
-    const count = leads.filter((l) => l.source === src).length;
-    const value = leads.filter((l) => l.source === src).reduce((acc, curr) => acc + curr.value, 0);
-    return { name: src, count, value };
-  });
+    const businessSummary = businesses.map((b) => {
+      const bizLeads = leads.filter((l) => l.businessId === b.id);
+      const wonLeads = bizLeads.filter((l) => l.status === "Closed Won");
+      const totalWonValue = wonLeads.reduce((acc, curr) => acc + curr.value, 0);
+      const conversionRate = bizLeads.length > 0 ? Number(((wonLeads.length / bizLeads.length) * 100).toFixed(1)) : 0;
 
-  // Resolution performance of chatbot
-  const totalInquiries = leads.filter((l) => ["Chat", "WhatsApp", "Messenger"].includes(l.source)).length + 24; // +24 simulated resolved chats
-  const aiResolved = totalInquiries - leads.filter((l) => ["Chat", "WhatsApp", "Messenger"].includes(l.source) && l.status === "New").length;
+      return {
+        id: b.id,
+        name: b.name,
+        category: b.category,
+        baseRevenue: b.revenue,
+        wonLeadsRevenue: totalWonValue,
+        totalRevenue: b.revenue + totalWonValue,
+        leadsCount: bizLeads.length,
+        wonLeadsCount: wonLeads.length,
+        conversionRate
+      };
+    });
 
-  res.json({
-    businessSummary,
-    sourceBreakdown,
-    chatbotStats: {
-      totalChats: totalInquiries,
-      aiResolved,
-      escalated: totalInquiries - aiResolved,
-      resolutionRate: Number(((aiResolved / totalInquiries) * 100).toFixed(1))
-    }
-  });
+    // Breakdown of leads by channels
+    const sources = ["Webform", "Chat", "Email", "WhatsApp", "Messenger"];
+    const sourceBreakdown = sources.map((src) => {
+      const count = leads.filter((l) => l.source === src).length;
+      const value = leads.filter((l) => l.source === src).reduce((acc, curr) => acc + curr.value, 0);
+      return { name: src, count, value };
+    });
+
+    // Resolution performance of chatbot
+    const totalInquiries = leads.filter((l) => ["Chat", "WhatsApp", "Messenger"].includes(l.source)).length + 24; 
+    const aiResolved = totalInquiries - leads.filter((l) => ["Chat", "WhatsApp", "Messenger"].includes(l.source) && l.status === "New").length;
+
+    res.json({
+      businessSummary,
+      sourceBreakdown,
+      chatbotStats: {
+        totalChats: totalInquiries,
+        aiResolved,
+        escalated: totalInquiries - aiResolved,
+        resolutionRate: Number(((aiResolved / totalInquiries) * 100).toFixed(1))
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to fetch analytics" });
+  }
 });
 
 // -----------------------------------------------------------------------------
@@ -1050,10 +779,11 @@ app.get("/api/analytics", (req, res) => {
 // -----------------------------------------------------------------------------
 app.post("/api/chatbot/chat", async (req, res) => {
   const { businessId, message, conversationHistory } = req.body;
-  const business = businesses.find((b) => b.id === businessId);
-  if (!business) {
+  const bizDoc = await getDoc(doc(db, "businesses", businessId));
+  if (!bizDoc.exists()) {
     return res.status(404).json({ error: "Business not found" });
   }
+  const business = bizDoc.data() as Business;
 
   // 1. THE FIREBASE "GATEKEEPER" (KILL-SWITCH) PRE-FLIGHT CHECK
   if (business.subscription_status === "suspended") {
@@ -1079,9 +809,10 @@ app.post("/api/chatbot/chat", async (req, res) => {
     const feeMatch = lowerMsg.match(/(\d+)\s*%/);
     const serviceFeePercent = feeMatch ? parseInt(feeMatch[1], 10) : 5;
     
-    // Update local store (simulating Firestore)
+    // Update Firestore
     business.service_fee_percentage = serviceFeePercent;
     business.weekend_fee_applied = true;
+    await setDoc(doc(db, "businesses", businessId), business);
 
     // Log the voice financial modification
     addAuditLog("Admin", "Voice Control Ingest", `Voice parsed: update weekend service fee to ${serviceFeePercent}% for ${business.name}`, "INFO", req.ip);
@@ -1242,10 +973,6 @@ TONE & STYLE:
 
   if (gemini) {
     try {
-      // Map history to standard contents format if present
-      const contentsList: any[] = [];
-      
-      // Inject system instruction in config
       const response = await gemini.models.generateContent({
         model: "gemini-3.5-flash",
         contents: [
@@ -1263,7 +990,6 @@ TONE & STYLE:
 
       const reply = response.text || "I apologize, I didn't quite get that. Could you please rephrase?";
       
-      // Handle automatic lead generation if the chatbot detects customer wants to be contacted or leaves details
       let leadGenerated = false;
       const hasEmail = lowerMsg.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
       const hasPhone = lowerMsg.match(/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
@@ -1275,24 +1001,25 @@ TONE & STYLE:
       res.json({ reply, leadGenerated });
     } catch (err: any) {
       console.error("Gemini Chat API Error:", err);
-      // Fallback with smart local knowledge parsing in case of API failure
       const fallbackReply = generateLocalFallback(message, business);
       res.json({ reply: fallbackReply + " (Sandbox Mode)", leadGenerated: business.subscription_tier !== "BASIC" });
     }
   } else {
-    // If no API key is set, use local fallback to ensure full offline mockup functionality
     const fallbackReply = generateLocalFallback(message, business);
     res.json({ reply: fallbackReply + " (Sandbox Offline)", leadGenerated: false });
   }
 });
 
-// Stripe webhook simulation to test Firebase status auto-suspension (Gatekeeper)
-app.post("/api/webhooks/stripe", (req, res) => {
+// Stripe webhook simulation
+app.post("/api/webhooks/stripe", async (req, res) => {
   const { type, businessId } = req.body;
   if (type === "payment_failed") {
-    const business = businesses.find(b => b.id === businessId);
-    if (business) {
+    const bizDoc = await getDoc(doc(db, "businesses", businessId));
+    if (bizDoc.exists()) {
+      const business = bizDoc.data() as Business;
       business.subscription_status = "suspended";
+      await setDoc(doc(db, "businesses", businessId), business);
+
       addAuditLog("Admin", "Stripe Webhook", `Stripe billing webhook reported 'payment_failed' for tenant ${business.name}. Firebase Gatekeeper Activated: status flipped to suspended.`, "CRITICAL", req.ip);
       return res.json({ 
         success: true, 
@@ -1304,14 +1031,13 @@ app.post("/api/webhooks/stripe", (req, res) => {
   res.json({ success: false, message: "Webhook processed with no action." });
 });
 
-// Endpoint for importing and extracting knowledge from a Website or Documentation URL using Gemini
+// Endpoint for importing and extracting knowledge
 app.post("/api/chatbot/import-website", async (req, res) => {
   const { url } = req.body;
   if (!url) {
     return res.status(400).json({ error: "URL is required" });
   }
 
-  // Basic URL validation
   try {
     new URL(url);
   } catch (err) {
@@ -1320,7 +1046,6 @@ app.post("/api/chatbot/import-website", async (req, res) => {
 
   let websiteHtml = "";
   try {
-    // Attempt real fetch of URL (with an 8-second timeout)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
@@ -1341,14 +1066,10 @@ app.post("/api/chatbot/import-website", async (req, res) => {
     console.warn(`Could not fetch real URL: ${url}. Error:`, err.message);
   }
 
-  // Parse or clean the scraped HTML/text
   let extractedText = "";
   if (websiteHtml) {
-    // Clean script, style, header, footer, nav, svg tags
     let cleaned = websiteHtml.replace(/<(script|style|head|nav|header|footer|svg)[\s\S]*?<\/\1>/gi, "");
-    // Strip all HTML tags
     cleaned = cleaned.replace(/<[^>]+>/g, " ");
-    // Decode HTML entities
     cleaned = cleaned
       .replace(/&nbsp;/g, " ")
       .replace(/&amp;/g, "&")
@@ -1356,17 +1077,14 @@ app.post("/api/chatbot/import-website", async (req, res) => {
       .replace(/&gt;/g, ">")
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'");
-    // Normalize whitespace
     cleaned = cleaned.replace(/\s+/g, " ").trim();
-    extractedText = cleaned.slice(0, 10000); // safety cap
+    extractedText = cleaned.slice(0, 10000);
   }
 
-  // If we couldn't get any text, generate a beautiful, realistic set of text based on the URL context using Gemini!
   const gemini = getGeminiClient();
 
   if (gemini) {
     try {
-      // Prompt Gemini to synthesize or clean the scraped data into a structured knowledge document
       const prompt = extractedText 
         ? `You are an AI data extractor. Extract and summarize the useful company info, services, policies, or FAQs from this web text. Format it cleanly in professional Markdown.\n\nSource URL: ${url}\nScraped text:\n${extractedText}`
         : `You are an AI document simulator. We could not fetch the URL directly due to sandbox network safety blocks. Generate a realistic and comprehensive customer support document, policy, or FAQ article based on the URL name and typical content expected at this address.\n\nTarget URL: ${url}`;
@@ -1380,25 +1098,10 @@ app.post("/api/chatbot/import-website", async (req, res) => {
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              title: {
-                type: Type.STRING,
-                description: "A professional and descriptive document title (e.g. 'Shipping and Returns Policy')",
-              },
-              content: {
-                type: Type.STRING,
-                description: "The core article content in detailed, clean Markdown with bullet points and clear sections.",
-              },
-              category: {
-                type: Type.STRING,
-                description: "A single concise category name (e.g. 'Policies', 'Company Profile', 'Product Support')",
-              },
-              tags: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.STRING,
-                },
-                description: "2-4 relevant lowercase tags (e.g. ['shipping', 'delivery', 'faq'])",
-              },
+              title: { type: Type.STRING },
+              content: { type: Type.STRING },
+              category: { type: Type.STRING },
+              tags: { type: Type.ARRAY, items: { type: Type.STRING } },
             },
             required: ["title", "content", "category", "tags"],
           },
@@ -1421,7 +1124,6 @@ app.post("/api/chatbot/import-website", async (req, res) => {
     }
   }
 
-  // Rule-based absolute fallback if Gemini is offline
   const parsedUrl = new URL(url);
   const pathParts = parsedUrl.pathname.split("/").filter(Boolean);
   const rawTitle = pathParts[pathParts.length - 1] || parsedUrl.hostname;
@@ -1660,15 +1362,62 @@ TOTAL SECURED VALUE: $${total.toFixed(2)} USD (E2E Encrypted)
   return `I'm checking our latest records. May I have your contact details to provide a detailed answer?`;
 }
 
+// Auth Endpoints
+app.post("/api/auth/signup", async (req, res) => {
+  const { email, name, role, provider } = req.body;
+  if (!email || !name) {
+    return res.status(400).json({ error: "Email and name are required" });
+  }
+
+  try {
+    const userDoc = await getDoc(doc(db, "users", email));
+    if (userDoc.exists()) {
+      return res.status(400).json({ error: "User already exists" });
+    }
+
+    const newUser = {
+      email,
+      name,
+      role: role || "Admin",
+      provider: provider || "google",
+      createdAt: new Date().toISOString()
+    };
+
+    await setDoc(doc(db, "users", email), newUser);
+    res.status(201).json(newUser);
+  } catch (e) {
+    res.status(500).json({ error: "Failed to create user profile" });
+  }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  try {
+    const userDoc = await getDoc(doc(db, "users", email));
+    if (!userDoc.exists()) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json(userDoc.data());
+  } catch (e) {
+    res.status(500).json({ error: "Failed to login" });
+  }
+});
+
+
 // -----------------------------------------------------------------------------
 // WEBFORM SUBMIT WITH AI SUMMARY
 // -----------------------------------------------------------------------------
 app.post("/api/inquiries/webform", async (req, res) => {
   const { businessId, name, email, phone, message } = req.body;
-  const business = businesses.find((b) => b.id === businessId);
-  if (!business) {
+  const bizDoc = await getDoc(doc(db, "businesses", businessId));
+  if (!bizDoc.exists()) {
     return res.status(404).json({ error: "Business not found" });
   }
+  const business = bizDoc.data() as Business;
 
   const systemPrompt = `You are a backend sales analysis AI. Your task is to process incoming customer contact forms and return a strict JSON payload.
 The JSON must have the following fields:
@@ -1705,7 +1454,6 @@ Message: ${message}`;
       aiResponse = { ...aiResponse, ...parsed };
     } catch (e) {
       console.error("AI Webform Analysis Failed:", e);
-      // Fallback
       if (message.toLowerCase().includes("screen")) {
         aiResponse = { category: "Screen Repair", estimatedValue: 120, summary: "Requests mobile screen repair info", suggestedAction: "Call to book visual check." };
       }
@@ -1716,8 +1464,9 @@ Message: ${message}`;
   const rawDetails = `Webform Message: ${message}. Customer Contact: Phone ${phone}, Email ${email}. Received via central portal.`;
   const encryptedDetails = encryptText(rawDetails);
 
+  const id = `lead-${Date.now()}`;
   const newLead: Lead = {
-    id: `lead-${Date.now()}`,
+    id,
     businessId,
     name,
     email,
@@ -1732,8 +1481,9 @@ Message: ${message}`;
     date: new Date().toISOString()
   };
 
-  leads.unshift(newLead);
+  await setDoc(doc(db, "leads", id), newLead);
   business.leadsCount += 1;
+  await setDoc(doc(db, "businesses", businessId), business);
 
   // Log Webform Trigger
   addAuditLog("Agent", "system-webform", `New lead generated from Webform: ${name} (${business.name})`, "INFO", req.ip);
@@ -1746,10 +1496,11 @@ Message: ${message}`;
 // -----------------------------------------------------------------------------
 app.post("/api/inquiries/email", async (req, res) => {
   const { businessId, senderName, senderEmail, subject, body } = req.body;
-  const business = businesses.find((b) => b.id === businessId);
-  if (!business) {
+  const bizDoc = await getDoc(doc(db, "businesses", businessId));
+  if (!bizDoc.exists()) {
     return res.status(404).json({ error: "Business not found" });
   }
+  const business = bizDoc.data() as Business;
 
   const systemPrompt = `You are a sales and customer care AI. Analyze the incoming email body, and draft a highly professional response that answers any FAQs.
 Your reply should be pre-composed for the business "${business.name}" and signed off by the "Central Management Team".
@@ -1792,12 +1543,13 @@ Respond strictly in a JSON structure containing:
   // Encrypt details
   const encryptedDetails = encryptText(`Email subject: ${subject}. Content: ${body}`);
 
+  const id = `lead-${Date.now()}`;
   const newLead: Lead = {
-    id: `lead-${Date.now()}`,
+    id,
     businessId,
     name: senderName,
     email: senderEmail,
-    phone: "+1 (555) 000-0000", // Unspecified
+    phone: "+1 (555) 000-0000", 
     source: "Email",
     status: "New",
     value: Number(aiDraft.suggestedValue) || 75,
@@ -1809,8 +1561,9 @@ Respond strictly in a JSON structure containing:
     notes: `AI REPLIER DRAFT:\n===================\n${aiDraft.replyDraft}`
   };
 
-  leads.unshift(newLead);
+  await setDoc(doc(db, "leads", id), newLead);
   business.leadsCount += 1;
+  await setDoc(doc(db, "businesses", businessId), business);
 
   // Log audit
   addAuditLog("Agent", "system-email-daemon", `Processed incoming email lead from ${senderEmail} for ${business.name}`, "INFO", req.ip);
@@ -1820,6 +1573,36 @@ Respond strictly in a JSON structure containing:
     replyDraft: aiDraft.replyDraft,
     category: aiDraft.category
   });
+});
+
+
+// Get JS Snippet for a business
+app.get("/api/snippet/:businessId", (req, res) => {
+  const { businessId } = req.params;
+  const business = businesses.find((b) => b.id === businessId);
+  if (!business) {
+    return res.status(404).json({ error: "Business not found" });
+  }
+
+  const snippet = `
+(function() {
+  const businessId = "${businessId}";
+  const script = document.createElement('script');
+  script.src = "https://cdn.repairhub.ai/widget.js";
+  script.async = true;
+  script.onload = () => {
+    window.RepairHubWidget.init({
+      businessId: businessId,
+      botName: "${business.chatSettings.botName || business.name + ' Assistant'}",
+      welcomeMessage: "${business.chatSettings.welcomeMessage}",
+      themeColor: "${business.chatSettings.avatarColor || '#4f46e5'}"
+    });
+  };
+  document.head.appendChild(script);
+})();
+  `.trim();
+
+  res.type("application/javascript").send(snippet);
 });
 
 // -----------------------------------------------------------------------------
