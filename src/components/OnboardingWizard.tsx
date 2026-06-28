@@ -179,12 +179,47 @@ export const OnboardingWizard: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleLaunch = async () => {
+    try {
+      // 1. Create the business profile in Firestore
+      const res = await fetch('/api/businesses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: state.businessId,
+          name: state.businessName,
+          category: state.category,
+          welcomeMessage: `Hi! Welcome to ${state.businessName}. How can I help you today?`,
+          whatsappPhoneNumber: state.whatsappId
+        })
+      });
+
+      if (!res.ok) throw new Error('Failed to save business');
+
+      // 2. Trigger AI training with the ingested knowledge
+      await fetch('/api/chatbot/builder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessId: state.businessId,
+          userInput: state.knowledgeValue
+        })
+      });
+
+      // 3. Complete onboarding
+      window.location.reload(); // Refresh to show the new business in the dashboard
+    } catch (e) {
+      console.error(e);
+      alert('Onboarding failed. Please check your Firestore connection.');
+    }
+  };
+
   return (
     <div className="max-w-md mx-auto bg-white dark:bg-gray-900 rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800">
       <div className="h-2 bg-gray-100 dark:bg-gray-800">
         <motion.div 
           initial={{ width: 0 }}
-          animate={{ width: `${(state.step / 5) * 100}%` }}
+          animate={{ width: `${(state.step / 3) * 100}%` }}
           className="h-full bg-indigo-500"
         />
       </div>
@@ -227,11 +262,11 @@ export const OnboardingWizard: React.FC = () => {
           </button>
           
           <button
-            onClick={state.step === 5 ? () => alert('Dashboard Initialized!') : nextStep}
+            onClick={state.step === 3 ? handleLaunch : nextStep}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-xl font-semibold shadow-lg shadow-indigo-500/30 transition-all active:scale-95"
           >
-            {state.step === 5 ? 'Launch' : 'Continue'}
-            {state.step < 5 && <ChevronRight size={20} />}
+            {state.step === 3 ? 'Launch' : 'Continue'}
+            {state.step < 3 && <ChevronRight size={20} />}
           </button>
         </div>
       </div>
