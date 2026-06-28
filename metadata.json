@@ -1,0 +1,6 @@
+{
+  "name": "Omni-Channel Support & Sales Analytics Hub",
+  "description": "A central platform to manage multi-business sales analytics, configure AI-powered customer chatbots, handle omni-channel inquiries, and secure customer data with RBAC and end-to-end encryption.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
