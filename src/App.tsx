@@ -13,7 +13,11 @@ import {
   Smartphone,
   Globe,
   Database,
-  LogOut
+  LogOut,
+  Plus,
+  Sparkles,
+  Send,
+  X
 } from "lucide-react";
 import { Business, Lead, AnalyticsData, UserRole } from "./types";
 import DashboardAnalytics from "./components/DashboardAnalytics";
@@ -22,7 +26,6 @@ import LeadsManager from "./components/LeadsManager";
 import OmniChannelSimulator from "./components/OmniChannelSimulator";
 import SecurityConsole from "./components/SecurityConsole";
 import LoginScreen from "./components/LoginScreen";
-import OnboardingWizard from "./components/OnboardingWizard";
 
 export default function App() {
   // Session Authentication State
@@ -36,6 +39,9 @@ export default function App() {
     const cached = localStorage.getItem("repairhub_user_session");
     return cached ? JSON.parse(cached) : null;
   });
+
+  // Track the current window location hash for robust UI routing
+  const [currentHash, setCurrentHash] = useState(window.location.hash || "#/login");
 
   // Session Roles and Navigation tabs
   const [activeTab, setActiveTab] = useState<"analytics" | "chatbots" | "leads" | "simulator" | "security">("analytics");
@@ -58,6 +64,73 @@ export default function App() {
 
   // Quick helper selector callback to redirect to configure bot
   const [selectedBizId, setSelectedBizId] = useState<string>("");
+
+  // Global AI Support Assistant & Onboarding States
+  const [isGlobalAiOpen, setIsGlobalAiOpen] = useState(false);
+  const [globalAiHistory, setGlobalAiHistory] = useState<Array<{
+    sender: "customer" | "bot";
+    text: string;
+    timestamp: string;
+  }>>([
+    {
+      sender: "bot",
+      text: "👋 Hello! I am your OmniHub AI Onboarding & Support Assistant. 🧠\n\nI am here to guide you through the system and help onboard your businesses!\n\nHere are some of the things you can do with me:\n• Ask how to manage and switch portfolios\n• Get embed codes for webforms/leadforms\n• Walk through adding raw files/knowledge base text to train your chatbot\n\nHow can I help you today?",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }
+  ]);
+  const [globalAiInput, setGlobalAiInput] = useState("");
+  const [isGlobalAiTyping, setIsGlobalAiTyping] = useState(false);
+  const [onboardTriggerActive, setOnboardTriggerActive] = useState(false);
+
+  const handleSendGlobalAiMessage = async (textToSend?: string) => {
+    const messageText = textToSend || globalAiInput;
+    if (!messageText.trim()) return;
+
+    const userMsg = {
+      sender: "customer" as const,
+      text: messageText,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    setGlobalAiHistory(prev => [...prev, userMsg]);
+    if (!textToSend) setGlobalAiInput("");
+    setIsGlobalAiTyping(true);
+
+    try {
+      const res = await fetch("/api/chatbot/builder", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-role": activeRole,
+          "x-user-email": userEmail
+        },
+        body: JSON.stringify({
+          businessId: selectedBizId || (businesses[0] ? businesses[0].id : "biz-1"),
+          userInput: messageText
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to contact Support API");
+      }
+
+      const data = await res.json();
+      
+      setGlobalAiHistory(prev => [...prev, {
+        sender: "bot" as const,
+        text: data.analysisSummary || "I've processed your input, but had no summary response. Please let me know how else I can assist you!",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+    } catch (err) {
+      setGlobalAiHistory(prev => [...prev, {
+        sender: "bot" as const,
+        text: "My apologies! I am currently experiencing connection difficulties. Please verify your internet or sandbox settings.",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+    } finally {
+      setIsGlobalAiTyping(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -88,9 +161,49 @@ export default function App() {
     }
   };
 
+  // Synchronize location hash with application state and load core data
   useEffect(() => {
     fetchData();
-  }, []);
+
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      setCurrentHash(hash || "#/login");
+
+      if (!sessionUser) {
+        if (hash === "#/signup") {
+          // Allow staying on signup
+        } else if (hash !== "#/login") {
+          window.location.hash = "#/login";
+          setCurrentHash("#/login");
+        }
+      } else {
+        if (hash.startsWith("#/dashboard/")) {
+          const tab = hash.replace("#/dashboard/", "") as any;
+          if (["analytics", "chatbots", "leads", "simulator", "security"].includes(tab)) {
+            setActiveTab(tab);
+          }
+        } else if (hash !== "#/login" && hash !== "#/signup") {
+          window.location.hash = `#/dashboard/analytics`;
+          setCurrentHash(`#/dashboard/analytics`);
+        }
+      }
+    };
+
+    handleHashChange();
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [sessionUser]);
+
+  // Synchronize active tab to hash
+  useEffect(() => {
+    if (sessionUser && !window.location.hash.startsWith("#/login") && !window.location.hash.startsWith("#/signup")) {
+      const hashTab = window.location.hash.replace("#/dashboard/", "");
+      if (hashTab !== activeTab) {
+        window.location.hash = `#/dashboard/${activeTab}`;
+        setCurrentHash(`#/dashboard/${activeTab}`);
+      }
+    }
+  }, [activeTab, sessionUser]);
 
   // Update business configuration locally
   const handleUpdateBusiness = (updatedBiz: Business) => {
@@ -198,23 +311,26 @@ export default function App() {
     setActiveTab("chatbots");
   };
 
-  if (sessionUser === null) {
+  const isLoginPage = currentHash === "#/login" || currentHash === "#/signup" || !sessionUser;
+
+  if (isLoginPage) {
     return (
       <LoginScreen 
+        sessionUser={sessionUser}
         onLogin={(user) => {
           setSessionUser(user);
           setActiveRole(user.role);
           localStorage.setItem("repairhub_user_session", JSON.stringify(user));
+          setCurrentHash(`#/dashboard/${activeTab}`);
+          window.location.hash = `#/dashboard/${activeTab}`;
+          fetchData();
         }} 
-      />
-    );
-  }
-
-  if (businesses.length === 0 && !loading) {
-    return (
-      <OnboardingWizard 
-        userEmail={userEmail} 
-        onComplete={() => fetchData()} 
+        onLogout={() => {
+          localStorage.removeItem("repairhub_user_session");
+          setSessionUser(null);
+          setCurrentHash("#/login");
+          window.location.hash = "#/login";
+        }}
       />
     );
   }
@@ -223,19 +339,53 @@ export default function App() {
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50 text-slate-900 font-sans" id="applet-core-layout">
       
       {/* Left Sidebar */}
-      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col border-r border-slate-800 shrink-0">
-        <div className="p-6 flex items-center gap-3 border-b border-slate-800">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white shadow-md">O</div>
-          <span className="text-xl font-bold text-white tracking-tight">OmniHub AI</span>
+      <aside className="w-64 bg-emerald-50/95 text-emerald-900 flex flex-col border-r border-emerald-200/60 shrink-0">
+        <div className="p-6 flex items-center gap-3 border-b border-emerald-200/60">
+          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center font-bold text-white shadow-md">O</div>
+          <span className="text-xl font-bold text-emerald-950 tracking-tight">OmniHub AI</span>
+        </div>
+
+        {/* Active Portfolio Switcher & Onboarding Trigger */}
+        <div className="p-4 mx-3 my-3 bg-white/70 border border-emerald-200/50 rounded-2xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] uppercase font-mono text-emerald-800 font-bold tracking-wider">
+              Active Portfolio
+            </span>
+            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" title="Scope active"></span>
+          </div>
+          
+          <select
+            value={selectedBizId}
+            onChange={(e) => setSelectedBizId(e.target.value)}
+            className="w-full bg-emerald-100/50 border border-emerald-200/80 rounded-xl px-2.5 py-1.5 text-emerald-950 text-xs font-semibold focus:outline-none focus:border-emerald-600 transition cursor-pointer font-sans"
+            id="global-sidebar-portfolio-selector"
+          >
+            {businesses.map((b) => (
+              <option key={b.id} value={b.id} className="text-slate-800 bg-white">
+                {b.name}
+              </option>
+            ))}
+          </select>
+
+          <button
+            onClick={() => {
+              setActiveTab("chatbots");
+              setOnboardTriggerActive(true);
+            }}
+            className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg transition flex items-center justify-center gap-1 shadow-sm shadow-emerald-700/10 cursor-pointer font-sans"
+            id="sidebar-onboard-new-btn"
+          >
+            <Plus size={10} /> Onboard New Portfolio
+          </button>
         </div>
         
-        <nav className="flex-1 p-4 space-y-1 text-sm overflow-y-auto">
-          <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Main Dashboard</div>
+        <nav className="flex-1 p-4 pt-1 space-y-1 text-sm overflow-y-auto">
+          <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700/80">Main Dashboard</div>
           
           <button
             onClick={() => setActiveTab("analytics")}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left ${
-              activeTab === "analytics" ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-850 hover:text-white"
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left cursor-pointer ${
+              activeTab === "analytics" ? "bg-emerald-600 text-white shadow-sm" : "text-emerald-800 hover:bg-emerald-100/70 hover:text-emerald-950"
             }`}
           >
             <TrendingUp size={16} /> Sales Analytics
@@ -243,19 +393,19 @@ export default function App() {
 
           <button
             onClick={() => setActiveTab("leads")}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left ${
-              activeTab === "leads" ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-850 hover:text-white"
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left cursor-pointer ${
+              activeTab === "leads" ? "bg-emerald-600 text-white shadow-sm" : "text-emerald-800 hover:bg-emerald-100/70 hover:text-emerald-950"
             }`}
           >
             <Users size={16} /> Inbound CRM Leads
           </button>
 
-          <div className="pt-6 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Customer Service</div>
+          <div className="pt-6 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700/80">Customer Service</div>
 
           <button
             onClick={() => setActiveTab("chatbots")}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left ${
-              activeTab === "chatbots" ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-850 hover:text-white"
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left cursor-pointer ${
+              activeTab === "chatbots" ? "bg-emerald-600 text-white shadow-sm" : "text-emerald-800 hover:bg-emerald-100/70 hover:text-emerald-950"
             }`}
           >
             <Bot size={16} /> AI Chatbot Config
@@ -263,42 +413,44 @@ export default function App() {
 
           <button
             onClick={() => setActiveTab("simulator")}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left ${
-              activeTab === "simulator" ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-850 hover:text-white"
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left cursor-pointer ${
+              activeTab === "simulator" ? "bg-emerald-600 text-white shadow-sm" : "text-emerald-800 hover:bg-emerald-100/70 hover:text-emerald-950"
             }`}
           >
             <Sliders size={16} /> Omni-Channel Simulator
           </button>
 
-          <div className="pt-6 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Security & Admin</div>
+          <div className="pt-6 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700/80">Security & Admin</div>
 
           <button
             onClick={() => setActiveTab("security")}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left ${
-              activeTab === "security" ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-850 hover:text-white"
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition text-left cursor-pointer ${
+              activeTab === "security" ? "bg-emerald-600 text-white shadow-sm" : "text-emerald-800 hover:bg-emerald-100/70 hover:text-emerald-950"
             }`}
           >
             <Shield size={16} /> Audit Logs & RBAC
           </button>
         </nav>
         
-        <div className="p-4 border-t border-slate-800 space-y-3">
-          <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
-            <span className="flex items-center gap-1.5">
+        <div className="p-4 border-t border-emerald-200/60 space-y-3">
+          <div className="flex items-center justify-between text-[10px] text-emerald-700 font-mono">
+            <span className="flex items-center gap-1.5 font-semibold text-emerald-800">
               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> Secure Session
             </span>
             <button
               onClick={() => {
                 localStorage.removeItem("repairhub_user_session");
                 setSessionUser(null);
+                setCurrentHash("#/login");
+                window.location.hash = "#/login";
               }}
-              className="text-red-400 hover:text-red-300 font-bold transition flex items-center gap-1 cursor-pointer"
+              className="text-red-600 hover:text-red-500 font-bold transition flex items-center gap-1 cursor-pointer"
               title="Sign Out"
             >
               <LogOut size={11} /> Exit
             </button>
           </div>
-          <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
+          <div className="flex items-center gap-2 text-[10px] text-emerald-600/70 font-mono">
             LAST AUDIT: 14:22 UTC
           </div>
         </div>
@@ -317,22 +469,6 @@ export default function App() {
               {activeTab === "simulator" && "Omni-Channel Live Simulation"}
               {activeTab === "security" && "RBAC Authorization & Trace logs"}
             </h2>
-            <span className="h-4 w-px bg-slate-200"></span>
-            
-            {/* Tenant Switcher */}
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">Business:</span>
-              <select 
-                value={selectedBizId} 
-                onChange={(e) => setSelectedBizId(e.target.value)}
-                className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-indigo-500 transition cursor-pointer"
-              >
-                {businesses.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            </div>
-
             <span className="h-4 w-px bg-slate-200"></span>
             <div className="text-xs text-slate-400">
               Global System Health: <span className="text-emerald-600 font-semibold">Optimal</span>
@@ -393,6 +529,9 @@ export default function App() {
                   userRole={activeRole}
                   userEmail={userEmail}
                   onRefreshBusinesses={fetchData}
+                  onSelectBusiness={(id) => setSelectedBizId(id)}
+                  onboardTriggerActive={onboardTriggerActive}
+                  resetOnboardTrigger={() => setOnboardTriggerActive(false)}
                 />
               )}
 
@@ -434,6 +573,145 @@ export default function App() {
         </footer>
 
       </main>
+
+      {/* Floating Global Onboarding & Support AI Assistant */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+        {isGlobalAiOpen && (
+          <div className="w-80 sm:w-96 h-[480px] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden mb-4 animate-fade-in text-white font-sans">
+            {/* Header */}
+            <div className="bg-slate-950 p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-sm shadow-inner relative">
+                  🧠
+                  <span className="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-slate-950 animate-pulse"></span>
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white font-sans">OmniHub AI Onboarding</h4>
+                  <p className="text-[9px] text-emerald-400 font-mono">Live Support & Co-Pilot</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsGlobalAiOpen(false)}
+                className="text-slate-400 hover:text-white transition duration-150 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Quick Suggestions Banner */}
+            <div className="px-3 py-2 bg-indigo-950/40 border-b border-indigo-900/20 text-[10px] text-indigo-300 flex items-center gap-1.5 shrink-0">
+              <Sparkles size={11} className="text-indigo-400 shrink-0" />
+              <span>Select a guided flow or type a custom question below.</span>
+            </div>
+
+            {/* Chats Container */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-950/40 scrollbar-thin">
+              {globalAiHistory.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`flex gap-2 max-w-[85%] ${msg.sender === "customer" ? "ml-auto flex-row-reverse" : "mr-auto"}`}
+                >
+                  <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-xs ${
+                    msg.sender === "customer" ? "bg-slate-800 text-slate-300" : "bg-emerald-600 text-white"
+                  }`}>
+                    {msg.sender === "customer" ? <User size={10} /> : <span>🧠</span>}
+                  </div>
+                  <div className="space-y-1">
+                    <div className={`px-3 py-2 rounded-xl text-xs leading-relaxed whitespace-pre-wrap ${
+                      msg.sender === "customer"
+                        ? "bg-emerald-600 text-white rounded-tr-none font-medium"
+                        : "bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-none font-light"
+                    }`}>
+                      {msg.text}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {isGlobalAiTyping && (
+                <div className="flex gap-2 max-w-[80%] mr-auto">
+                  <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center bg-emerald-600 text-white text-xs">
+                    🧠
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl rounded-tl-none flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></span>
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></span>
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Guided Quick Actions */}
+            <div className="p-2 border-t border-slate-800 bg-slate-950/60 flex flex-wrap gap-1.5 shrink-0">
+              <button
+                onClick={() => {
+                  setActiveTab("chatbots");
+                  setOnboardTriggerActive(true);
+                  setIsGlobalAiOpen(false);
+                }}
+                className="px-2 py-1 bg-indigo-500/15 hover:bg-indigo-500/25 text-[10px] text-indigo-400 border border-indigo-500/20 rounded-md transition duration-150 flex items-center gap-1 cursor-pointer font-sans"
+              >
+                🚀 Onboard a New Business
+              </button>
+              <button
+                onClick={() => {
+                  handleSendGlobalAiMessage("How do I embed the chatbot widget or lead capture webform on my website?");
+                }}
+                className="px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-[10px] text-emerald-400 border border-emerald-500/20 rounded-md transition duration-150 flex items-center gap-1 cursor-pointer font-sans"
+              >
+                📋 Embed Codes Setup
+              </button>
+              <button
+                onClick={() => {
+                  handleSendGlobalAiMessage("How do I configure settings, update details or replace existing business data?");
+                }}
+                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 border border-slate-700 rounded-md transition duration-150 flex items-center gap-1 cursor-pointer font-sans"
+              >
+                ⚙️ Replace/Manage Settings
+              </button>
+            </div>
+
+            {/* Input Footer */}
+            <div className="p-3 border-t border-slate-800 bg-slate-950 flex gap-2 shrink-0">
+              <input
+                type="text"
+                value={globalAiInput}
+                onChange={(e) => setGlobalAiInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSendGlobalAiMessage()}
+                placeholder="Ask me how to configure or integrate..."
+                className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-sans"
+              />
+              <button
+                onClick={() => handleSendGlobalAiMessage()}
+                className="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition duration-150 flex items-center justify-center cursor-pointer"
+              >
+                <Send size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Pulsing Assistant Toggle Button */}
+        <button
+          onClick={() => setIsGlobalAiOpen(!isGlobalAiOpen)}
+          className="w-14 h-14 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition duration-150 relative cursor-pointer group"
+          id="global-onboarding-ai-assistant-btn"
+          title="Open AI Onboarding Assistant"
+        >
+          {isGlobalAiOpen ? (
+            <X size={24} />
+          ) : (
+            <>
+              <Sparkles size={24} className="animate-pulse" />
+              <span className="absolute -top-1 -right-1 bg-indigo-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full border-2 border-slate-50 animate-bounce">
+                AI Help
+              </span>
+            </>
+          )}
+        </button>
+      </div>
+
     </div>
   );
 }

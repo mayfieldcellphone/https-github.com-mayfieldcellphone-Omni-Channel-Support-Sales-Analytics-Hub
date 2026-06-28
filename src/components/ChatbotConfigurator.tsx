@@ -24,7 +24,13 @@ import {
   Layers,
   Infinity,
   CheckCircle2,
-  DollarSign
+  DollarSign,
+  Download,
+  UploadCloud,
+  FileSpreadsheet,
+  FileJson,
+  Code,
+  Copy
 } from "lucide-react";
 import { Business, FAQ, ChatSettings, KBArticle } from "../types";
 
@@ -35,6 +41,9 @@ interface ChatbotConfiguratorProps {
   userRole: string;
   userEmail: string;
   onRefreshBusinesses?: () => void;
+  onSelectBusiness?: (id: string) => void;
+  onboardTriggerActive?: boolean;
+  resetOnboardTrigger?: () => void;
 }
 
 interface ChatMessage {
@@ -49,12 +58,50 @@ export default function ChatbotConfigurator({
   onUpdateBusiness,
   userRole,
   userEmail,
-  onRefreshBusinesses
+  onRefreshBusinesses,
+  onSelectBusiness,
+  onboardTriggerActive,
+  resetOnboardTrigger
 }: ChatbotConfiguratorProps) {
   const [bizId, setBizId] = useState(selectedBusinessId);
+
+  // Sync selected business from parent dropdown
+  useEffect(() => {
+    if (selectedBusinessId && selectedBusinessId !== bizId) {
+      setBizId(selectedBusinessId);
+    }
+  }, [selectedBusinessId]);
+
+  // Sync back local business selections to global app state
+  useEffect(() => {
+    if (onSelectBusiness && bizId) {
+      onSelectBusiness(bizId);
+    }
+  }, [bizId, onSelectBusiness]);
+
+  // Watch for onboarding creation triggers
+  useEffect(() => {
+    if (onboardTriggerActive) {
+      setIsCreatingBiz(true);
+      if (resetOnboardTrigger) {
+        resetOnboardTrigger();
+      }
+    }
+  }, [onboardTriggerActive, resetOnboardTrigger]);
   
   // Find current business
   const currentBiz = businesses.find((b) => b.id === bizId) || businesses[0];
+
+  const getPublicOrigin = () => {
+    if (typeof window === 'undefined') {
+      return 'https://ais-pre-t5k2bi32unqbmimsslh4bd-411472579253.asia-east1.run.app';
+    }
+    let origin = window.location.origin;
+    if (origin.includes('ais-dev-')) {
+      origin = origin.replace('ais-dev-', 'ais-pre-');
+    }
+    return origin;
+  };
 
   // Forms states
   const [welcomeMessage, setWelcomeMessage] = useState("");
@@ -64,6 +111,8 @@ export default function ChatbotConfigurator({
   const [avatarIcon, setAvatarIcon] = useState("🤖");
   const [themeStyle, setThemeStyle] = useState("modern");
   const [handoffRules, setHandoffRules] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [knowledgeBaseText, setKnowledgeBaseText] = useState("");
   const [fewShotExamples, setFewShotExamples] = useState<FAQ[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
 
@@ -93,6 +142,13 @@ export default function ChatbotConfigurator({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [expandedArticleId, setExpandedArticleId] = useState<string | null>(null);
 
+  // Bulk Import/Export States
+  const [showFaqBulk, setShowFaqBulk] = useState(false);
+  const [showKbBulk, setShowKbBulk] = useState(false);
+  const [faqImportMode, setFaqImportMode] = useState<"append" | "overwrite">("append");
+  const [kbImportMode, setKbImportMode] = useState<"append" | "overwrite">("append");
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
   // GitHub Pull Integration States
   const [githubRepo, setGithubRepo] = useState("mayfieldcellphone/repairhub-saas-v1");
   const [githubFilePath, setGithubFilePath] = useState("README.md");
@@ -100,7 +156,7 @@ export default function ChatbotConfigurator({
   const [isPullingGithub, setIsPullingGithub] = useState(false);
 
   // Builder Bot Setup Wizard States
-  const [activeSidebarTab, setActiveSidebarTab] = useState<"sandbox" | "builder">("sandbox");
+  const [activeSidebarTab, setActiveSidebarTab] = useState<"sandbox" | "builder" | "deploy">("sandbox");
   const [builderInput, setBuilderInput] = useState("");
   const [builderHistory, setBuilderHistory] = useState<ChatMessage[]>([
     {
@@ -119,7 +175,12 @@ export default function ChatbotConfigurator({
   const [newBizWelcome, setNewBizWelcome] = useState("");
   const [newBizPhone, setNewBizPhone] = useState("");
   const [newBizApiKey, setNewBizApiKey] = useState("");
+  const [newBizWebsite, setNewBizWebsite] = useState("");
+  const [newBizKB, setNewBizKB] = useState("");
   const [isUpgrading, setIsUpgrading] = useState<string | null>(null);
+  const [copiedWidgetCode, setCopiedWidgetCode] = useState(false);
+  const [widgetColor, setWidgetColor] = useState("#10b981");
+  const [deployCodeFormat, setDeployCodeFormat] = useState<"html" | "json" | "form">("html");
 
   // Chat window state
   const [chatInput, setChatInput] = useState("");
@@ -140,6 +201,8 @@ export default function ChatbotConfigurator({
       setAvatarIcon(currentBiz.chatSettings.avatarIcon || "🤖");
       setThemeStyle(currentBiz.chatSettings.themeStyle || "modern");
       setHandoffRules(currentBiz.chatSettings.handoffRules || "");
+      setWebsiteUrl(currentBiz.websiteUrl || "");
+      setKnowledgeBaseText(currentBiz.knowledgeBaseText || "");
       setFewShotExamples(currentBiz.chatSettings.fewShotExamples || []);
       setFaqs(currentBiz.faqKnowledge);
       setKbArticles(currentBiz.kbArticles || []);
@@ -205,6 +268,8 @@ export default function ChatbotConfigurator({
     try {
       const updatedBiz = {
         ...currentBiz,
+        websiteUrl,
+        knowledgeBaseText,
         chatSettings: {
           welcomeMessage,
           tone,
@@ -300,6 +365,376 @@ export default function ChatbotConfigurator({
     } catch (e: any) {
       showStatus("error", e.message || "Failed to delete FAQ.");
     }
+  };
+
+  // -----------------------------------------------------------------------------
+  // BULK IMPORT & EXPORT LOGIC FOR FAQS AND REFERENCE ARTICLES
+  // -----------------------------------------------------------------------------
+
+  const parseCSV = (text: string): string[][] => {
+    const lines: string[][] = [];
+    let row: string[] = [];
+    let inQuotes = false;
+    let currentVal = "";
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+      
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          currentVal += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        row.push(currentVal.trim());
+        currentVal = "";
+      } else if ((char === '\n' || char === '\r') && !inQuotes) {
+        if (char === '\r' && nextChar === '\n') {
+          i++;
+        }
+        row.push(currentVal.trim());
+        if (row.some(val => val !== "")) {
+          lines.push(row);
+        }
+        row = [];
+        currentVal = "";
+      } else {
+        currentVal += char;
+      }
+    }
+    if (currentVal !== "" || row.length > 0) {
+      row.push(currentVal.trim());
+      if (row.some(val => val !== "")) {
+        lines.push(row);
+      }
+    }
+    return lines;
+  };
+
+  const handleExportFaqs = (format: "csv" | "json") => {
+    try {
+      if (format === "json") {
+        const jsonString = JSON.stringify(faqs, null, 2);
+        const blob = new Blob([jsonString], { type: "application/json;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `${currentBiz.name.replace(/\s+/g, "_")}_FAQs.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showStatus("success", `Exported ${faqs.length} FAQs as JSON successfully!`);
+      } else {
+        const headers = ["Question", "Answer"];
+        const csvRows = [headers.join(",")];
+        for (const faq of faqs) {
+          const q = `"${faq.question.replace(/"/g, '""')}"`;
+          const a = `"${faq.answer.replace(/"/g, '""')}"`;
+          csvRows.push(`${q},${a}`);
+        }
+        const csvContent = csvRows.join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `${currentBiz.name.replace(/\s+/g, "_")}_FAQs.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showStatus("success", `Exported ${faqs.length} FAQs as CSV successfully!`);
+      }
+    } catch (err: any) {
+      showStatus("error", `Failed to export FAQs: ${err.message}`);
+    }
+  };
+
+  const handleImportFaqsFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkError(null);
+
+    const fileExtension = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+    const reader = new FileReader();
+
+    reader.onload = async (event) => {
+      try {
+        const content = event.target?.result as string;
+        if (!content) throw new Error("File is empty.");
+
+        let importedFaqs: FAQ[] = [];
+
+        if (fileExtension === ".json") {
+          const parsed = JSON.parse(content);
+          const arrayToParse = Array.isArray(parsed) ? parsed : (parsed.faqs && Array.isArray(parsed.faqs) ? parsed.faqs : null);
+          if (!arrayToParse) {
+            throw new Error("JSON file must be an array of FAQ objects or have a top-level 'faqs' array.");
+          }
+          for (let i = 0; i < arrayToParse.length; i++) {
+            const item = arrayToParse[i];
+            if (typeof item.question !== "string" || typeof item.answer !== "string") {
+              throw new Error(`Row ${i + 1} is missing a 'question' or 'answer' string.`);
+            }
+            importedFaqs.push({
+              question: item.question.trim(),
+              answer: item.answer.trim()
+            });
+          }
+        } else if (fileExtension === ".csv") {
+          const rows = parseCSV(content);
+          if (rows.length < 1) {
+            throw new Error("CSV has no data rows.");
+          }
+          
+          let qIdx = 0;
+          let aIdx = 1;
+          const firstRow = rows[0].map(c => c.toLowerCase());
+          
+          const hasHeaders = firstRow.some(c => c.includes("question") || c.includes("query") || c.includes("answer") || c.includes("response"));
+          
+          let startIndex = 0;
+          if (hasHeaders) {
+            startIndex = 1;
+            const foundQ = firstRow.findIndex(c => c.includes("question") || c.includes("query") || c === "q");
+            const foundA = firstRow.findIndex(c => c.includes("answer") || c.includes("response") || c === "a");
+            if (foundQ !== -1) qIdx = foundQ;
+            if (foundA !== -1) aIdx = foundA;
+          }
+
+          for (let i = startIndex; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length < Math.max(qIdx, aIdx) + 1) continue;
+            const q = row[qIdx]?.trim();
+            const a = row[aIdx]?.trim();
+            if (q && a) {
+              importedFaqs.push({ question: q, answer: a });
+            }
+          }
+        } else {
+          throw new Error("Unsupported file extension. Please select a .json or .csv file.");
+        }
+
+        if (importedFaqs.length === 0) {
+          throw new Error("No valid FAQs were extracted from the file.");
+        }
+
+        let finalFaqs = [...faqs];
+        if (faqImportMode === "overwrite") {
+          finalFaqs = importedFaqs;
+        } else {
+          const existingQs = new Set(faqs.map(f => f.question.toLowerCase()));
+          for (const imp of importedFaqs) {
+            if (!existingQs.has(imp.question.toLowerCase())) {
+              finalFaqs.push(imp);
+              existingQs.add(imp.question.toLowerCase());
+            }
+          }
+        }
+
+        const updatedBiz = {
+          ...currentBiz,
+          faqKnowledge: finalFaqs
+        };
+
+        const res = await fetch(`/api/businesses/${currentBiz.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-role": userRole,
+            "x-user-email": userEmail
+          },
+          body: JSON.stringify(updatedBiz)
+        });
+
+        if (!res.ok) throw new Error("Could not save imported FAQs to the database.");
+        const data = await res.json();
+        onUpdateBusiness(data);
+        setFaqs(finalFaqs);
+        setShowFaqBulk(false);
+        showStatus("success", `Successfully imported ${importedFaqs.length} FAQ items!`);
+      } catch (err: any) {
+        setBulkError(err.message || "Failed to process import file.");
+        showStatus("error", err.message || "Failed to import FAQs.");
+      }
+    };
+
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleExportArticles = (format: "csv" | "json") => {
+    try {
+      if (format === "json") {
+        const jsonString = JSON.stringify(kbArticles, null, 2);
+        const blob = new Blob([jsonString], { type: "application/json;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `${currentBiz.name.replace(/\s+/g, "_")}_Knowledge_Base.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showStatus("success", `Exported ${kbArticles.length} reference articles as JSON successfully!`);
+      } else {
+        const headers = ["Title", "Content", "Category", "Tags"];
+        const csvRows = [headers.join(",")];
+        for (const art of kbArticles) {
+          const title = `"${art.title.replace(/"/g, '""')}"`;
+          const content = `"${art.content.replace(/"/g, '""')}"`;
+          const category = `"${(art.category || "General").replace(/"/g, '""')}"`;
+          const tags = `"${(art.tags || []).join(", ").replace(/"/g, '""')}"`;
+          csvRows.push(`${title},${content},${category},${tags}`);
+        }
+        const csvContent = csvRows.join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `${currentBiz.name.replace(/\s+/g, "_")}_Knowledge_Base.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showStatus("success", `Exported ${kbArticles.length} reference articles as CSV successfully!`);
+      }
+    } catch (err: any) {
+      showStatus("error", `Failed to export reference articles: ${err.message}`);
+    }
+  };
+
+  const handleImportArticlesFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkError(null);
+
+    const fileExtension = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+    const reader = new FileReader();
+
+    reader.onload = async (event) => {
+      try {
+        const content = event.target?.result as string;
+        if (!content) throw new Error("File is empty.");
+
+        let importedArticles: KBArticle[] = [];
+
+        if (fileExtension === ".json") {
+          const parsed = JSON.parse(content);
+          const arrayToParse = Array.isArray(parsed) ? parsed : (parsed.articles && Array.isArray(parsed.articles) ? parsed.articles : (parsed.kbArticles && Array.isArray(parsed.kbArticles) ? parsed.kbArticles : null));
+          if (!arrayToParse) {
+            throw new Error("JSON file must be an array of Article objects or have a top-level 'articles' array.");
+          }
+          for (let i = 0; i < arrayToParse.length; i++) {
+            const item = arrayToParse[i];
+            if (typeof item.title !== "string" || typeof item.content !== "string") {
+              throw new Error(`Row ${i + 1} is missing a 'title' or 'content' string.`);
+            }
+            importedArticles.push({
+              id: `art-${Date.now()}-${i}`,
+              title: item.title.trim(),
+              content: item.content.trim(),
+              category: item.category?.trim() || "General",
+              tags: Array.isArray(item.tags) ? item.tags.map((t: any) => String(t).trim()) : (item.tags ? String(item.tags).split(",").map(t => t.trim()) : []),
+              createdAt: item.createdAt || new Date().toISOString()
+            });
+          }
+        } else if (fileExtension === ".csv") {
+          const rows = parseCSV(content);
+          if (rows.length < 1) {
+            throw new Error("CSV has no data rows.");
+          }
+          
+          let titleIdx = 0;
+          let contentIdx = 1;
+          let categoryIdx = 2;
+          let tagsIdx = 3;
+          const firstRow = rows[0].map(c => c.toLowerCase());
+          
+          const hasHeaders = firstRow.some(c => c.includes("title") || c.includes("content") || c.includes("category") || c.includes("tag"));
+          
+          let startIndex = 0;
+          if (hasHeaders) {
+            startIndex = 1;
+            const foundTitle = firstRow.findIndex(c => c.includes("title") || c === "name");
+            const foundContent = firstRow.findIndex(c => c.includes("content") || c.includes("body") || c.includes("text"));
+            const foundCategory = firstRow.findIndex(c => c.includes("category") || c.includes("topic") || c === "group");
+            const foundTags = firstRow.findIndex(c => c.includes("tags") || c === "tag");
+            if (foundTitle !== -1) titleIdx = foundTitle;
+            if (foundContent !== -1) contentIdx = foundContent;
+            if (foundCategory !== -1) categoryIdx = foundCategory;
+            if (foundTags !== -1) tagsIdx = foundTags;
+          }
+
+          for (let i = startIndex; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length < Math.max(titleIdx, contentIdx) + 1) continue;
+            const title = row[titleIdx]?.trim();
+            const body = row[contentIdx]?.trim();
+            const category = row[categoryIdx]?.trim() || "General";
+            const rawTags = row[tagsIdx]?.trim() || "";
+            const tags = rawTags ? rawTags.split(",").map(t => t.trim()).filter(Boolean) : [];
+            
+            if (title && body) {
+              importedArticles.push({
+                id: `art-${Date.now()}-${i}`,
+                title,
+                content: body,
+                category,
+                tags,
+                createdAt: new Date().toISOString()
+              });
+            }
+          }
+        } else {
+          throw new Error("Unsupported file extension. Please select a .json or .csv file.");
+        }
+
+        if (importedArticles.length === 0) {
+          throw new Error("No valid articles were extracted from the file.");
+        }
+
+        let finalArticles = [...kbArticles];
+        if (kbImportMode === "overwrite") {
+          finalArticles = importedArticles;
+        } else {
+          const existingTitles = new Set(kbArticles.map(a => a.title.toLowerCase()));
+          for (const imp of importedArticles) {
+            if (!existingTitles.has(imp.title.toLowerCase())) {
+              finalArticles.push(imp);
+              existingTitles.add(imp.title.toLowerCase());
+            }
+          }
+        }
+
+        const updatedBiz = {
+          ...currentBiz,
+          kbArticles: finalArticles
+        };
+
+        const res = await fetch(`/api/businesses/${currentBiz.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-role": userRole,
+            "x-user-email": userEmail
+          },
+          body: JSON.stringify(updatedBiz)
+        });
+
+        if (!res.ok) throw new Error("Could not save imported articles to the database.");
+        const data = await res.json();
+        onUpdateBusiness(data);
+        setKbArticles(finalArticles);
+        setShowKbBulk(false);
+        showStatus("success", `Successfully imported ${importedArticles.length} reference documents!`);
+      } catch (err: any) {
+        setBulkError(err.message || "Failed to process import file.");
+        showStatus("error", err.message || "Failed to import reference articles.");
+      }
+    };
+
+    reader.readAsText(file);
+    e.target.value = "";
   };
 
   // Automated document classification using Gemini backend
@@ -559,7 +994,9 @@ export default function ChatbotConfigurator({
           category: newBizCategory,
           welcomeMessage: newBizWelcome.trim() || `Hi! Thanks for reaching out to ${newBizName.trim()}. How can we help you repair your device today?`,
           whatsappPhoneNumber: newBizPhone.trim(),
-          whatsappApiKey: newBizApiKey.trim()
+          whatsappApiKey: newBizApiKey.trim(),
+          websiteUrl: newBizWebsite.trim(),
+          knowledgeBaseText: newBizKB.trim()
         })
       });
 
@@ -577,6 +1014,8 @@ export default function ChatbotConfigurator({
       setNewBizWelcome("");
       setNewBizPhone("");
       setNewBizApiKey("");
+      setNewBizWebsite("");
+      setNewBizKB("");
       setIsCreatingBiz(false);
 
       // Refresh parent lists
@@ -987,6 +1426,30 @@ export default function ChatbotConfigurator({
                 />
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Website URL</label>
+                  <input
+                    type="url"
+                    placeholder="https://example.com"
+                    value={newBizWebsite}
+                    onChange={(e) => setNewBizWebsite(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 font-sans"
+                  />
+                </div>
+                
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Knowledge Base Context</label>
+                  <textarea
+                    placeholder="Enter operating hours, price lists, or training materials..."
+                    value={newBizKB}
+                    onChange={(e) => setNewBizKB(e.target.value)}
+                    rows={1}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 font-sans resize-none"
+                  />
+                </div>
+              </div>
+
               <div className="border-t border-slate-800/60 pt-3 space-y-3">
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">WhatsApp API Integration Node (Beta)</span>
@@ -1388,6 +1851,34 @@ export default function ChatbotConfigurator({
             </div>
           </div>
 
+          {/* Website and Knowledge Base training fields */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-3 border-t border-slate-800/40">
+            <div className="md:col-span-1 space-y-2">
+              <label className="text-xs font-mono text-slate-300 uppercase tracking-wider block flex items-center gap-1.5">
+                <Globe size={13} className="text-indigo-400" /> Website URL
+              </label>
+              <input
+                type="url"
+                value={websiteUrl}
+                onChange={(e) => setWebsiteUrl(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-100 focus:outline-none focus:border-indigo-500 transition duration-150 text-sm font-sans"
+                placeholder="https://example.com"
+              />
+            </div>
+            <div className="md:col-span-2 space-y-2">
+              <label className="text-xs font-mono text-slate-300 uppercase tracking-wider block flex items-center gap-1.5">
+                <FileText size={13} className="text-indigo-400" /> General Knowledge Base & Training Context
+              </label>
+              <textarea
+                value={knowledgeBaseText}
+                onChange={(e) => setKnowledgeBaseText(e.target.value)}
+                rows={2}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-slate-100 focus:outline-none focus:border-indigo-500 transition duration-150 text-xs font-sans resize-y"
+                placeholder="Paste operating hours, pricing tables, product details, or common policies here to ground the AI model..."
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Tone selection */}
             <div className="space-y-2">
@@ -1569,13 +2060,122 @@ export default function ChatbotConfigurator({
               <p className="text-xs text-slate-400">Approved context that the AI agent uses to answer customers.</p>
             </div>
             
-            <button
-              onClick={() => setIsAddingFaq(!isAddingFaq)}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans text-xs font-semibold rounded-xl transition duration-200 flex items-center gap-1 border border-slate-700"
-            >
-              <Plus size={14} /> Add FAQ
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setShowFaqBulk(!showFaqBulk);
+                  setBulkError(null);
+                }}
+                className={`px-3 py-1.5 font-sans text-xs font-semibold rounded-xl transition duration-200 flex items-center gap-1 border cursor-pointer ${
+                  showFaqBulk 
+                    ? "bg-indigo-600/20 border-indigo-500 text-indigo-400" 
+                    : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
+                }`}
+              >
+                <UploadCloud size={14} /> Bulk Tools
+              </button>
+              <button
+                onClick={() => setIsAddingFaq(!isAddingFaq)}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans text-xs font-semibold rounded-xl transition duration-200 flex items-center gap-1 border border-slate-700 cursor-pointer"
+              >
+                <Plus size={14} /> Add FAQ
+              </button>
+            </div>
           </div>
+
+          {/* Bulk Ingestion panel for FAQs */}
+          {showFaqBulk && (
+            <div className="bg-slate-950 border border-indigo-500/30 p-4 rounded-xl space-y-4 animate-fade-in" id="faq-bulk-ingestion-form">
+              <div className="flex justify-between items-center border-b border-slate-900 pb-2">
+                <span className="text-xs font-mono text-indigo-400 uppercase tracking-wider block font-semibold">Bulk Import / Export FAQs</span>
+                <button 
+                  onClick={() => setShowFaqBulk(false)}
+                  className="text-xs text-slate-500 hover:text-slate-300"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Export Side */}
+                <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-850 space-y-3">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">1. Export Brain Registry</span>
+                  <p className="text-xs text-slate-400 leading-relaxed font-light">Download all currently indexable custom FAQ questions and answers to keep as a backup or migrate to another business profile.</p>
+                  
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleExportFaqs("csv")}
+                      disabled={faqs.length === 0}
+                      className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition"
+                    >
+                      <FileSpreadsheet size={13} /> Export .CSV
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExportFaqs("json")}
+                      disabled={faqs.length === 0}
+                      className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition"
+                    >
+                      <FileJson size={13} /> Export .JSON
+                    </button>
+                  </div>
+                </div>
+
+                {/* Import Side */}
+                <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-850 space-y-3">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">2. Ingest New Training Data</span>
+                  <p className="text-xs text-slate-400 leading-relaxed font-light">Upload a CSV or JSON file containing columns/keys for "question" and "answer".</p>
+                  
+                  <div className="flex items-center gap-4">
+                    <label className="text-[10px] text-slate-300 font-sans flex items-center gap-1 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="faqImportMode" 
+                        checked={faqImportMode === "append"} 
+                        onChange={() => setFaqImportMode("append")}
+                        className="text-indigo-600 focus:ring-indigo-500 bg-slate-950 border-slate-800"
+                      />
+                      Append to existing
+                    </label>
+                    <label className="text-[10px] text-slate-300 font-sans flex items-center gap-1 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="faqImportMode" 
+                        checked={faqImportMode === "overwrite"} 
+                        onChange={() => setFaqImportMode("overwrite")}
+                        className="text-indigo-600 focus:ring-indigo-500 bg-slate-950 border-slate-800"
+                      />
+                      Overwrite Entire DB
+                    </label>
+                  </div>
+
+                  <div>
+                    <input
+                      type="file"
+                      id="bulk-faq-file-input"
+                      accept=".csv,.json"
+                      onChange={handleImportFaqsFile}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById("bulk-faq-file-input")?.click()}
+                      className="w-full py-2 bg-indigo-600/15 hover:bg-indigo-600/25 text-indigo-400 border border-indigo-500/20 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition"
+                    >
+                      <UploadCloud size={13} /> Select .CSV or .JSON File
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {bulkError && (
+                <div className="text-[11px] text-red-400 font-medium flex items-center gap-1.5 bg-red-900/10 border border-red-500/15 p-2 rounded-lg">
+                  <AlertCircle size={13} /> {bulkError}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Add FAQ form block */}
           {isAddingFaq && (
@@ -1658,18 +2258,127 @@ export default function ChatbotConfigurator({
               <p className="text-xs text-slate-400">Index full articles, service manuals, or policy documents for deeper AI context. Gemini synthesizes detailed answers from these sources.</p>
             </div>
             
-            <button
-              onClick={() => {
-                setIsAddingArticle(!isAddingArticle);
-                setArticleTitle("");
-                setArticleContent("");
-                setUploadError(null);
-              }}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans text-xs font-semibold rounded-xl transition duration-200 flex items-center gap-1 border border-slate-700 cursor-pointer shrink-0"
-            >
-              <Plus size={14} /> Add Reference Article
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setShowKbBulk(!showKbBulk);
+                  setBulkError(null);
+                }}
+                className={`px-3 py-1.5 font-sans text-xs font-semibold rounded-xl transition duration-200 flex items-center gap-1 border cursor-pointer shrink-0 ${
+                  showKbBulk 
+                    ? "bg-indigo-600/20 border-indigo-500 text-indigo-400" 
+                    : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
+                }`}
+              >
+                <UploadCloud size={14} /> Bulk Tools
+              </button>
+              <button
+                onClick={() => {
+                  setIsAddingArticle(!isAddingArticle);
+                  setArticleTitle("");
+                  setArticleContent("");
+                  setUploadError(null);
+                }}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-sans text-xs font-semibold rounded-xl transition duration-200 flex items-center gap-1 border border-slate-700 cursor-pointer shrink-0"
+              >
+                <Plus size={14} /> Add Reference Article
+              </button>
+            </div>
           </div>
+
+          {/* Bulk Ingestion panel for Articles */}
+          {showKbBulk && (
+            <div className="bg-slate-950 border border-indigo-500/30 p-4 rounded-xl space-y-4 animate-fade-in" id="kb-bulk-ingestion-form">
+              <div className="flex justify-between items-center border-b border-slate-900 pb-2">
+                <span className="text-xs font-mono text-indigo-400 uppercase tracking-wider block font-semibold">Bulk Import / Export Knowledge Documents</span>
+                <button 
+                  onClick={() => setShowKbBulk(false)}
+                  className="text-xs text-slate-500 hover:text-slate-300"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Export Side */}
+                <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-850 space-y-3">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">1. Export Document Index</span>
+                  <p className="text-xs text-slate-400 leading-relaxed font-light">Download all currently indexable custom reference manuals and articles to save as backup or move to another profile.</p>
+                  
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleExportArticles("csv")}
+                      disabled={kbArticles.length === 0}
+                      className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition"
+                    >
+                      <FileSpreadsheet size={13} /> Export .CSV
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExportArticles("json")}
+                      disabled={kbArticles.length === 0}
+                      className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition"
+                    >
+                      <FileJson size={13} /> Export .JSON
+                    </button>
+                  </div>
+                </div>
+
+                {/* Import Side */}
+                <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-850 space-y-3">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">2. Ingest Reference manual Data</span>
+                  <p className="text-xs text-slate-400 leading-relaxed font-light">Upload a CSV or JSON file containing columns/keys: "title", "content", and optionally "category", "tags".</p>
+                  
+                  <div className="flex items-center gap-4">
+                    <label className="text-[10px] text-slate-300 font-sans flex items-center gap-1 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="kbImportMode" 
+                        checked={kbImportMode === "append"} 
+                        onChange={() => setKbImportMode("append")}
+                        className="text-indigo-600 focus:ring-indigo-500 bg-slate-950 border-slate-800"
+                      />
+                      Append to existing
+                    </label>
+                    <label className="text-[10px] text-slate-300 font-sans flex items-center gap-1 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="kbImportMode" 
+                        checked={kbImportMode === "overwrite"} 
+                        onChange={() => setKbImportMode("overwrite")}
+                        className="text-indigo-600 focus:ring-indigo-500 bg-slate-950 border-slate-800"
+                      />
+                      Overwrite Entire Index
+                    </label>
+                  </div>
+
+                  <div>
+                    <input
+                      type="file"
+                      id="bulk-kb-file-input"
+                      accept=".csv,.json"
+                      onChange={handleImportArticlesFile}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById("bulk-kb-file-input")?.click()}
+                      className="w-full py-2 bg-indigo-600/15 hover:bg-indigo-600/25 text-indigo-400 border border-indigo-500/20 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition"
+                    >
+                      <UploadCloud size={13} /> Select .CSV or .JSON File
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {bulkError && (
+                <div className="text-[11px] text-red-400 font-medium flex items-center gap-1.5 bg-red-900/10 border border-red-500/15 p-2 rounded-lg">
+                  <AlertCircle size={13} /> {bulkError}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Add Article Form */}
           {isAddingArticle && (
@@ -2244,7 +2953,7 @@ export default function ChatbotConfigurator({
             }`}
           >
             <MessageSquare size={12} />
-            <span>Chatbot Sandbox</span>
+            <span>Sandbox</span>
           </button>
           <button
             type="button"
@@ -2256,7 +2965,19 @@ export default function ChatbotConfigurator({
             }`}
           >
             <Sparkles size={12} />
-            <span>Builder Bot Wizard</span>
+            <span>Builder Bot</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSidebarTab("deploy")}
+            className={`flex-1 py-1.5 text-center text-[11px] font-semibold rounded-lg transition duration-150 flex items-center justify-center gap-1.5 ${
+              activeSidebarTab === "deploy"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Code size={12} />
+            <span>Deploy Widget</span>
           </button>
         </div>
 
@@ -2387,7 +3108,7 @@ export default function ChatbotConfigurator({
               </button>
             </form>
           </div>
-        ) : (
+        ) : activeSidebarTab === "builder" ? (
           /* Builder Bot Setup Wizard Panel */
           <div className="bg-slate-900 border border-slate-800 rounded-2xl flex flex-col h-[550px] shadow-lg overflow-hidden relative" id="builder-bot-wizard">
             
@@ -2479,6 +3200,25 @@ export default function ChatbotConfigurator({
               <div ref={chatEndRef} />
             </div>
 
+            {/* Quick action helper suggestion chips */}
+            <div className="px-3 pb-2 pt-1 bg-slate-950 border-t border-slate-900/50 flex flex-wrap gap-1.5 shrink-0">
+              {[
+                { label: "🚀 App Onboarding", prompt: "Explain step-by-step how to onboard a new business and run a simulation in the Customer Simulator." },
+                { label: "⚙️ Settings & Channels", prompt: "How do I configure integrations like CRM, custom WhatsApp phone channels, or customized chatbot themes?" },
+                { label: "🔒 Gatekeeper & Voice Features", prompt: "Explain how the Stripe/Firebase Gatekeeper failsafe locks inactive profiles, and how Voice-to-Finance surge pricing works." },
+                { label: "📊 Linked Tenants Summary", prompt: "Summarize and compare all linked businesses configured on this platform, including their revenues, tiers, and statuses." }
+              ].map((chip, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setBuilderInput(chip.prompt)}
+                  className="px-2 py-1 bg-slate-900 border border-slate-800 hover:border-indigo-500 hover:bg-slate-850 rounded-lg text-[9px] text-slate-300 font-medium transition duration-150 shrink-0 cursor-pointer"
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+
             {/* Input form */}
             <form onSubmit={handleSendBuilderMessage} className="p-3 bg-slate-950 border-t border-slate-800 flex gap-2">
               <input
@@ -2498,6 +3238,263 @@ export default function ChatbotConfigurator({
               </button>
             </form>
           </div>
+        ) : (
+          /* Ready-to-deploy Chatbot Widget Code Panel */
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl flex flex-col h-[550px] shadow-lg overflow-hidden relative" id="deploy-widget-panel">
+            {/* Header */}
+            <div className="px-5 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center text-white">
+                  <Code size={18} />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white font-sans">Deploy Chatbot Widget</h4>
+                  <p className="text-[9px] text-slate-400 font-mono">Live Widget Code for {currentBiz.name}</p>
+                </div>
+              </div>
+              <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full uppercase font-bold tracking-wider">
+                Production-Ready
+              </span>
+            </div>
+
+            {/* In-Panel scrollable config container */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-slate-800">
+              
+              {/* Info text */}
+              <p className="text-slate-400 text-[11px] leading-relaxed">
+                We compiled this code using custom enterprise data fed via your onboarding facts and fine-tuning inputs. Simply embed this snippet into your HTML to mount the live assistant widget.
+              </p>
+
+              {/* Format Toggle */}
+              <div className="flex border-b border-slate-800 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setDeployCodeFormat("html")}
+                  className={`px-3 py-1.5 text-[10px] font-mono font-medium border-b-2 transition duration-150 ${
+                    deployCodeFormat === "html"
+                      ? "border-indigo-500 text-indigo-400"
+                      : "border-transparent text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  HTML Widget Code
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeployCodeFormat("json")}
+                  className={`px-3 py-1.5 text-[10px] font-mono font-medium border-b-2 transition duration-150 ${
+                    deployCodeFormat === "json"
+                      ? "border-indigo-500 text-indigo-400"
+                      : "border-transparent text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Headless JSON API config
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeployCodeFormat("form")}
+                  className={`px-3 py-1.5 text-[10px] font-mono font-medium border-b-2 transition duration-150 ${
+                    deployCodeFormat === "form"
+                      ? "border-indigo-500 text-indigo-400"
+                      : "border-transparent text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Lead Webform Code
+                </button>
+              </div>
+
+              {/* Customizer tools */}
+              {(deployCodeFormat === "html" || deployCodeFormat === "form") && (
+                <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-850 space-y-2.5">
+                  <label className="text-[9px] font-mono text-indigo-400 uppercase tracking-wider block font-semibold">Customize Accent Color</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={widgetColor}
+                      onChange={(e) => setWidgetColor(e.target.value)}
+                      className="w-8 h-8 rounded-lg bg-transparent border border-slate-800 cursor-pointer overflow-hidden p-0"
+                    />
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        value={widgetColor}
+                        onChange={(e) => setWidgetColor(e.target.value)}
+                        placeholder="#10b981"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Copy & Display box */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-[9px] font-mono text-slate-400 uppercase tracking-wider">Generated Code Snippet</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const appOrigin = getPublicOrigin();
+                      const codeText = deployCodeFormat === "html" 
+                        ? `<!-- OmniHub AI Chatbot Widget for ${currentBiz.name} -->
+<script 
+  src="${appOrigin}/widget.js" 
+  data-tenant-id="${currentBiz.id}" 
+  data-welcome="${currentBiz.chatSettings?.welcomeMessage || 'Hello!'}"
+  data-color="${widgetColor}" 
+  async>
+</script>`
+                        : deployCodeFormat === "json"
+                        ? JSON.stringify({
+                            tenant_id: currentBiz.id,
+                            model: "gemini-1.5-flash",
+                            temperature: 0.4,
+                            tone: currentBiz.chatSettings?.tone || "Professional",
+                            learned_documents_count: currentBiz.kbArticles?.length || 0,
+                            learned_faqs_count: currentBiz.faqKnowledge?.length || 0,
+                            website_url: currentBiz.websiteUrl || "",
+                            api_endpoint: `${appOrigin}/api/chatbot/chat`
+                          }, null, 2)
+                        : `<!-- OmniHub Lead Capture Form for ${currentBiz.name} -->
+<div id="omnihub-lead-form-container-${currentBiz.id}" style="max-width: 480px; margin: 15px auto; padding: 24px; font-family: system-ui, sans-serif; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+  <form id="omnihub-lead-form-${currentBiz.id}" style="display: flex; flex-direction: column; gap: 16px;">
+    <div style="text-align: center; margin-bottom: 8px;">
+      <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #1e293b;">Inquire with ${currentBiz.name}</h3>
+      <p style="margin: 4px 0 0; font-size: 12px; color: #64748b;">Submit details to instantly notify our central desk.</p>
+    </div>
+    <input type="hidden" name="businessId" value="${currentBiz.id}">
+    <div>
+      <label style="display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; color: #475569; margin-bottom: 6px;">Your Name</label>
+      <input type="text" name="name" required placeholder="John Doe" style="width: 100%; box-sizing: border-box; padding: 10px 14px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 8px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='${widgetColor}'" onblur="this.style.borderColor='#cbd5e1'">
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+      <div>
+        <label style="display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; color: #475569; margin-bottom: 6px;">Email</label>
+        <input type="email" name="email" required placeholder="john@example.com" style="width: 100%; box-sizing: border-box; padding: 10px 14px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 8px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='${widgetColor}'" onblur="this.style.borderColor='#cbd5e1'">
+      </div>
+      <div>
+        <label style="display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; color: #475569; margin-bottom: 6px;">Phone</label>
+        <input type="tel" name="phone" required placeholder="(555) 000-0000" style="width: 100%; box-sizing: border-box; padding: 10px 14px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 8px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='${widgetColor}'" onblur="this.style.borderColor='#cbd5e1'">
+      </div>
+    </div>
+    <div>
+      <label style="display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; color: #475569; margin-bottom: 6px;">Message / Inquiry Details</label>
+      <textarea name="message" required rows="3" placeholder="Describe your repair needs, pricing query, or appointment requests..." style="width: 100%; box-sizing: border-box; padding: 10px 14px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 8px; outline: none; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='${widgetColor}'" onblur="this.style.borderColor='#cbd5e1'"></textarea>
+    </div>
+    <button type="submit" style="width: 100%; padding: 12px; font-size: 13px; font-weight: 600; color: #ffffff; background: ${widgetColor}; border: none; border-radius: 8px; cursor: pointer; transition: opacity 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.1);" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Submit Inquiry</button>
+    <div id="omnihub-form-status-${currentBiz.id}" style="display: none; font-size: 12px; text-align: center; padding: 8px; border-radius: 6px; margin-top: 4px;"></div>
+  </form>
+  <script>
+    document.getElementById('omnihub-lead-form-${currentBiz.id}').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const form = this;
+      const btn = form.querySelector('button[type="submit"]');
+      const statusDiv = document.getElementById('omnihub-form-status-${currentBiz.id}');
+      const prevBtnText = btn.innerText;
+      btn.disabled = true;
+      btn.innerText = 'Submitting...';
+      statusDiv.style.display = 'none';
+      
+      fetch('${appOrigin}/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessId: form.businessId.value,
+          name: form.name.value,
+          email: form.email.value,
+          phone: form.phone.value,
+          message: form.message.value,
+          source: 'Webform Embed'
+        })
+      })
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then(() => {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#f0fdf4';
+        statusDiv.style.color = '#15803d';
+        statusDiv.style.border = '1px solid #bbf7d0';
+        statusDiv.innerText = 'Thank you! Your lead was registered in your workspace dashboard.';
+        form.reset();
+      })
+      .catch(() => {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#fff1f2';
+        statusDiv.style.color = '#b91c1c';
+        statusDiv.style.border = '1px solid #fecdd3';
+        statusDiv.innerText = 'Submission failed. Please try again.';
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.innerText = prevBtnText;
+      });
+    });
+  <\/script>
+</div>`;
+                      navigator.clipboard.writeText(codeText);
+                      setCopiedWidgetCode(true);
+                      setTimeout(() => setCopiedWidgetCode(false), 2000);
+                    }}
+                    className="text-[9px] font-mono text-indigo-400 hover:text-indigo-300 flex items-center gap-1 px-2 py-0.5 bg-indigo-500/10 rounded"
+                  >
+                    {copiedWidgetCode ? (
+                      <>
+                        <Check size={10} />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={10} />
+                        <span>Copy Code</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="relative font-mono">
+                  <pre className="text-[10px] text-slate-300 bg-slate-950 border border-slate-850 rounded-xl p-3.5 overflow-x-auto leading-relaxed max-h-56">
+                    <code>
+                      {deployCodeFormat === "html" ? (
+                        `<!-- OmniHub AI Chatbot Widget for ${currentBiz.name} -->
+<script 
+  src="${getPublicOrigin()}/widget.js" 
+  data-tenant-id="${currentBiz.id}" 
+  data-welcome="${currentBiz.chatSettings?.welcomeMessage || 'Hello!'}"
+  data-color="${widgetColor}" 
+  async>
+</script>`
+                      ) : deployCodeFormat === "json" ? (
+                        JSON.stringify({
+                          tenant_id: currentBiz.id,
+                          model: "gemini-1.5-flash",
+                          temperature: 0.4,
+                          tone: currentBiz.chatSettings?.tone || "Professional",
+                          learned_documents_count: currentBiz.kbArticles?.length || 0,
+                          learned_faqs_count: currentBiz.faqKnowledge?.length || 0,
+                          website_url: currentBiz.websiteUrl || "",
+                          api_endpoint: `${getPublicOrigin()}/api/chatbot/chat`
+                        }, null, 2)
+                      ) : (
+                        `<!-- Lead Capture Webform for ${currentBiz.name} -->
+<div id="omnihub-lead-form-container-${currentBiz.id}">
+  ... (Copies full self-contained styling, CORS endpoint & submit handler) ...
+</div>`
+                      )}
+                    </code>
+                  </pre>
+                </div>
+              </div>
+
+              {/* Status indicators */}
+              <div className="bg-slate-950/40 border border-slate-900 rounded-xl p-3 flex justify-between items-center text-[10px] text-slate-400">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span>Webhook Agent: Active</span>
+                </span>
+                <span>Faqs Synchronized: {currentBiz.faqKnowledge?.length || 0}</span>
+                <span>Files: {currentBiz.kbArticles?.length || 0}</span>
+              </div>
+
+            </div>
+          </div>
         )}
 
         {/* Informative Help tip */}
@@ -2506,8 +3503,10 @@ export default function ChatbotConfigurator({
           <p className="leading-relaxed font-sans font-light">
             {activeSidebarTab === "sandbox" ? (
               <span><strong>Pro Tip:</strong> Updates made in the FAQ Knowledge base on the left are **immediately** visible to the AI here. Try adding a custom FAQ and test the chatbot query to see the model dynamically synthesize a reply!</span>
-            ) : (
+            ) : activeSidebarTab === "builder" ? (
               <span><strong>Setup Wizard:</strong> Copy-paste any raw details (unstructured text, email policies, pricing sheets) above. The Builder Bot parses the facts, segments them, and trains your active tenant chatbot instantly!</span>
+            ) : (
+              <span><strong>Live Snippet:</strong> Paste this JavaScript tag in the footer of your target website. The chatbot automatically boots and uses your configured FAQs, custom website scraper, and uploaded files.</span>
             )}
           </p>
         </div>

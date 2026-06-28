@@ -182,7 +182,7 @@ export default function DashboardAnalytics({
   return (
     <div className="space-y-8 animate-fade-in" id="dashboard-analytics-view">
       
-      {businesses.some(b => b.subscription_status === "suspended") && (
+      {businesses.some(b => b.subscription_status !== "active") && (
         <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in shadow-sm">
           <div className="flex gap-3">
             <div className="p-2 bg-red-100 rounded-lg text-red-700 shrink-0">
@@ -193,7 +193,7 @@ export default function DashboardAnalytics({
                 🔒 PAYMENT REQUIRED: SaaS Gatekeeper Failsafe Active
               </h4>
               <p className="text-[11px] text-red-800 leading-relaxed font-sans mt-0.5">
-                Stripe reported a payment failure. The AI agent reply system is currently locked for <strong>{businesses.filter(b => b.subscription_status === "suspended").map(b => b.name).join(", ")}</strong>. Please restore active billing to instantly resume chatbot automation.
+                Stripe reported a payment failure. The AI agent reply system is currently locked for <strong>{businesses.filter(b => b.subscription_status !== "active").map(b => b.name).join(", ")}</strong>. Please restore active billing to instantly resume chatbot automation.
               </p>
             </div>
           </div>
