@@ -10,6 +10,7 @@ export interface KBArticle {
   createdAt: string;
   category?: string;
   tags?: string[];
+  learnedInsights?: string[];
 }
 
 export interface ChatSettings {

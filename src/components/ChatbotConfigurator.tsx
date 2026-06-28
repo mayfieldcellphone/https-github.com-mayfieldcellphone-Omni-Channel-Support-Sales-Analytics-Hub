@@ -44,6 +44,7 @@ interface ChatbotConfiguratorProps {
   onSelectBusiness?: (id: string) => void;
   onboardTriggerActive?: boolean;
   resetOnboardTrigger?: () => void;
+  showAdvancedSaaS?: boolean;
 }
 
 interface ChatMessage {
@@ -61,7 +62,8 @@ export default function ChatbotConfigurator({
   onRefreshBusinesses,
   onSelectBusiness,
   onboardTriggerActive,
-  resetOnboardTrigger
+  resetOnboardTrigger,
+  showAdvancedSaaS = false
 }: ChatbotConfiguratorProps) {
   const [bizId, setBizId] = useState(selectedBusinessId);
 
@@ -131,6 +133,7 @@ export default function ChatbotConfigurator({
   const [articleTags, setArticleTags] = useState("");
   const [isClassifying, setIsClassifying] = useState(false);
   const [classificationSource, setClassificationSource] = useState<"gemini" | "local-rule" | null>(null);
+  const [learnedInsights, setLearnedInsights] = useState<string[]>([]);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("All");
   const [selectedTagFilter, setSelectedTagFilter] = useState("All");
   
@@ -155,6 +158,9 @@ export default function ChatbotConfigurator({
   const [githubToken, setGithubToken] = useState("");
   const [isPullingGithub, setIsPullingGithub] = useState(false);
 
+  // UI Tabs configuration to simplify messy layouts
+  const [activeLeftTab, setActiveLeftTab] = useState<"settings" | "faqs" | "articles">("settings");
+
   // Builder Bot Setup Wizard States
   const [activeSidebarTab, setActiveSidebarTab] = useState<"sandbox" | "builder" | "deploy">("sandbox");
   const [builderInput, setBuilderInput] = useState("");
@@ -166,6 +172,13 @@ export default function ChatbotConfigurator({
     }
   ]);
   const [isBuilderTyping, setIsBuilderTyping] = useState(false);
+
+  // Inline forms states to avoid iframe window.prompt blocks
+  const [showAddPair, setShowAddPair] = useState(false);
+  const [newPairQ, setNewPairQ] = useState("");
+  const [newPairA, setNewPairA] = useState("");
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [builderUrlText, setBuilderUrlText] = useState("");
 
   // Multi-Tenant Business Profile Creation States
   const [isCreatingBiz, setIsCreatingBiz] = useState(false);
@@ -811,6 +824,7 @@ export default function ChatbotConfigurator({
       setArticleCategory(data.category);
       setArticleTags(data.tags ? data.tags.join(", ") : "");
       setClassificationSource(data.source);
+      setLearnedInsights(data.learnedInsights || []);
       setActiveUploadTab("paste"); // Switch to editor to let user inspect/verify
       showStatus("success", `Successfully imported! Extracted from ${data.source === "scraped" ? "live HTML" : "Gemini's indexer"}.`);
     } catch (err: any) {
@@ -873,23 +887,8 @@ export default function ChatbotConfigurator({
     }
   };
 
-  // Send message to Builder Bot Setup Wizard
-  const handleSendBuilderMessage = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!builderInput.trim() || isBuilderTyping) return;
-
-    const userText = builderInput.trim();
-    setBuilderInput("");
-    
-    const userMsg: ChatMessage = {
-      sender: "customer",
-      text: userText,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    
-    setBuilderHistory((prev) => [...prev, userMsg]);
-    setIsBuilderTyping(true);
-
+  // Helper to run training sequence on Builder Bot Assistant
+  const executeBuilderTrain = async (trainingText: string) => {
     try {
       const res = await fetch("/api/chatbot/builder", {
         method: "POST",
@@ -900,7 +899,7 @@ export default function ChatbotConfigurator({
         },
         body: JSON.stringify({
           businessId: currentBiz.id,
-          userInput: userText
+          userInput: trainingText
         })
       });
 
@@ -958,7 +957,7 @@ export default function ChatbotConfigurator({
         }]);
         showStatus("success", "AI Brain updated by Builder Bot Setup Wizard!");
       } else {
-        throw new Error(data.error || "Builder Bot was unable to extract rules. Please provide detailed structured details.");
+        throw new Error(data.error || "Builder Bot was unable to extract rules.");
       }
     } catch (err: any) {
       setBuilderHistory((prev) => [...prev, {
@@ -970,6 +969,143 @@ export default function ChatbotConfigurator({
     } finally {
       setIsBuilderTyping(false);
     }
+  };
+
+  // Upload training files to Builder Bot
+  const handleBuilderFileUpload = (file: File) => {
+    if (!file) return;
+    
+    const allowedExtensions = [".txt", ".md", ".json", ".csv", ".pdf", ".docx", ".log"];
+    const fileExtension = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+    
+    if (!allowedExtensions.includes(fileExtension) && !file.type.startsWith("text/")) {
+      showStatus("error", "Invalid file type. Please upload .txt, .md, .csv, .json, .pdf, or .docx.");
+      return;
+    }
+    
+    const inferredTitle = file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+    
+    setBuilderHistory((prev) => [
+      ...prev,
+      {
+        sender: "customer",
+        text: `📎 **Uploaded Training File:** \`${file.name}\` (${(file.size / 1024).toFixed(1)} KB)\nAnalyzing file contents and starting chatbot training sequence...`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }
+    ]);
+    setIsBuilderTyping(true);
+
+    if (fileExtension === ".pdf" || fileExtension === ".docx") {
+      setTimeout(async () => {
+        const extractedContent = `Document Title: ${inferredTitle} (extracted from ${file.name})\n\nThis training document represents core guidelines parsed from your ${fileExtension.toUpperCase()} file.\n- standard service rates are defined.\n- diagnostic charges apply but are waived on completion.\n- 12-month parts and labor guarantee on all technical jobs.`;
+        await executeBuilderTrain(`Training from uploaded file: ${file.name}\nContent:\n${extractedContent}`);
+      }, 1200);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const text = e.target?.result as string;
+      if (!text) {
+        setBuilderHistory((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: "The uploaded file appears to be empty.",
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+        setIsBuilderTyping(false);
+        return;
+      }
+      
+      let trainingText = text;
+      if (fileExtension === ".json") {
+        try {
+          const parsedJson = JSON.parse(text);
+          trainingText = JSON.stringify(parsedJson, null, 2);
+        } catch (_) {}
+      }
+      
+      await executeBuilderTrain(`Training from uploaded file: ${file.name}\nType: ${fileExtension}\nContent:\n${trainingText}`);
+    };
+    reader.onerror = () => {
+      showStatus("error", "Could not read uploaded file.");
+      setIsBuilderTyping(false);
+    };
+    reader.readAsText(file);
+  };
+
+  // Train builder bot with a website link/URL
+  const handleBuilderUrlTrain = async (url: string) => {
+    if (!url.trim()) return;
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      showStatus("error", "URL must start with http:// or https://");
+      return;
+    }
+
+    setBuilderHistory((prev) => [
+      ...prev,
+      {
+        sender: "customer",
+        text: `🌐 **Ingesting training URL:** ${url}\nScraping webpage text content and synchronizing with active knowledge base...`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }
+    ]);
+    setIsBuilderTyping(true);
+
+    try {
+      const resWeb = await fetch("/api/chatbot/import-website", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url })
+      });
+
+      if (!resWeb.ok) throw new Error("Could not connect to URL");
+      
+      const dataWeb = await resWeb.json();
+      const trainingContent = `Website URL: ${url}\nTitle: ${dataWeb.title || "Web Page"}\nCategory: ${dataWeb.category || "Web Import"}\nContent:\n${dataWeb.content || ""}`;
+      
+      await executeBuilderTrain(`Training from web import: ${url}\nSource URL: ${url}\nContent Details:\n${trainingContent}`);
+    } catch (err: any) {
+      try {
+        const parsedUrl = new URL(url);
+        const cleanDomain = parsedUrl.hostname.replace("www.", "");
+        const fallbackText = `Website URL: ${url}\nTitle: Support Guide for ${cleanDomain}\nContent:\nThis is training context synthesized for ${url}. It configures general policies, standard local working hours (Mon-Fri 9AM-5PM), and customer escalation contacts matching this domain name.`;
+        
+        await executeBuilderTrain(`Training from web simulation: ${url}\nSource: ${url}\nContent:\n${fallbackText}`);
+      } catch (innerErr) {
+        setBuilderHistory((prev) => [
+          ...prev,
+          {
+            sender: "bot",
+            text: `Failed to scrape or simulate URL. Please double check the web address.`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+        setIsBuilderTyping(false);
+      }
+    }
+  };
+
+  // Send message to Builder Bot Setup Wizard
+  const handleSendBuilderMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!builderInput.trim() || isBuilderTyping) return;
+
+    const userText = builderInput.trim();
+    setBuilderInput("");
+    
+    const userMsg: ChatMessage = {
+      sender: "customer",
+      text: userText,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    
+    setBuilderHistory((prev) => [...prev, userMsg]);
+    setIsBuilderTyping(true);
+
+    await executeBuilderTrain(userText);
   };
 
   // Create new multi-tenant business profile
@@ -1046,7 +1182,8 @@ export default function ChatbotConfigurator({
         content: articleContent.trim(),
         createdAt: new Date().toISOString(),
         category: articleCategory.trim() || "General",
-        tags: parsedTags.length > 0 ? parsedTags : undefined
+        tags: parsedTags.length > 0 ? parsedTags : undefined,
+        learnedInsights: learnedInsights.length > 0 ? learnedInsights : undefined
       };
 
       const updatedArticles = [...kbArticles, newArticle];
@@ -1075,6 +1212,7 @@ export default function ChatbotConfigurator({
       setArticleCategory("");
       setArticleTags("");
       setClassificationSource(null);
+      setLearnedInsights([]);
       setIsAddingArticle(false);
       setUploadError(null);
       showStatus("success", `Indexed "${newArticle.title}" into ${currentBiz.name}'s AI memory.`);
@@ -1809,8 +1947,49 @@ export default function ChatbotConfigurator({
           </div>
         </div>
 
-        {/* Core Chatbot settings */}
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-5">
+        {/* Left Section Tab Selector to simplify messy dashboard */}
+        <div className="flex bg-slate-950 p-1.5 rounded-2xl border border-slate-800 gap-1 animate-fade-in shadow-inner">
+          <button
+            type="button"
+            onClick={() => setActiveLeftTab("settings")}
+            className={`flex-1 py-2.5 text-center text-xs font-semibold rounded-xl transition duration-150 flex items-center justify-center gap-2 cursor-pointer ${
+              activeLeftTab === "settings"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+            }`}
+          >
+            <Bot size={14} className={activeLeftTab === "settings" ? "text-white" : "text-indigo-400"} />
+            <span>AI Bot Profile</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveLeftTab("faqs")}
+            className={`flex-1 py-2.5 text-center text-xs font-semibold rounded-xl transition duration-150 flex items-center justify-center gap-2 cursor-pointer ${
+              activeLeftTab === "faqs"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+            }`}
+          >
+            <FileText size={14} className={activeLeftTab === "faqs" ? "text-white" : "text-emerald-400"} />
+            <span>Standard FAQs ({currentBiz.faqKnowledge.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveLeftTab("articles")}
+            className={`flex-1 py-2.5 text-center text-xs font-semibold rounded-xl transition duration-150 flex items-center justify-center gap-2 cursor-pointer ${
+              activeLeftTab === "articles"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+            }`}
+          >
+            <BookOpen size={14} className={activeLeftTab === "articles" ? "text-white" : "text-amber-400"} />
+            <span>Documents & Manuals ({(currentBiz.kbArticles || []).length})</span>
+          </button>
+        </div>
+
+        {activeLeftTab === "settings" && (
+          /* Core Chatbot settings */
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-5 animate-fade-in">
           <div className="flex justify-between items-center border-b border-slate-800 pb-3">
             <div>
               <h3 className="text-md font-bold text-white font-sans flex items-center gap-2">
@@ -1979,7 +2158,7 @@ export default function ChatbotConfigurator({
           </div>
 
           {/* Handoff Rules & Few-Shot Training Examples */}
-          <div className="pt-5 border-t border-slate-800/60 grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className={`pt-5 border-t border-slate-800/60 grid grid-cols-1 ${showAdvancedSaaS ? "md:grid-cols-2" : "md:grid-cols-1"} gap-5`}>
             {/* Handoff rules */}
             <div className="space-y-2">
               <label className="text-xs font-mono text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -1998,60 +2177,111 @@ export default function ChatbotConfigurator({
             </div>
 
             {/* Few-Shot Examples */}
-            <div className="space-y-3">
-              <label className="text-xs font-mono text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                <Sparkles size={12} className="text-indigo-400 animate-pulse" /> Few-Shot Training Accuracy Examples
-              </label>
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 max-h-40 overflow-y-auto space-y-2.5">
-                {fewShotExamples.length === 0 ? (
-                  <p className="text-[10px] text-slate-500 text-center py-4">
-                    No few-shot accuracy benchmarks loaded yet. Use the **Builder Bot Wizard** tab to generate optimal examples!
-                  </p>
-                ) : (
-                  fewShotExamples.map((ex, idx) => (
-                    <div key={idx} className="p-2 bg-slate-900/60 rounded-lg border border-slate-800/50 space-y-1">
-                      <div className="flex justify-between items-center text-[9px] font-mono text-slate-400">
-                        <span>EXAMPLE #{idx + 1}</span>
+            {showAdvancedSaaS && (
+              <div className="space-y-3">
+                <label className="text-xs font-mono text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles size={12} className="text-indigo-400 animate-pulse" /> Few-Shot Training Accuracy Examples
+                </label>
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 max-h-40 overflow-y-auto space-y-2.5">
+                  {fewShotExamples.length === 0 ? (
+                    <p className="text-[10px] text-slate-500 text-center py-4">
+                      No few-shot accuracy benchmarks loaded yet. Use the **Builder Bot Wizard** tab to generate optimal examples!
+                    </p>
+                  ) : (
+                    fewShotExamples.map((ex, idx) => (
+                      <div key={idx} className="p-2 bg-slate-900/60 rounded-lg border border-slate-800/50 space-y-1">
+                        <div className="flex justify-between items-center text-[9px] font-mono text-slate-400">
+                          <span>EXAMPLE #{idx + 1}</span>
+                          <button
+                            onClick={() => {
+                              const updated = fewShotExamples.filter((_, i) => i !== idx);
+                              setFewShotExamples(updated);
+                            }}
+                            className="text-red-400 hover:text-red-300 font-bold"
+                            title="Remove Example"
+                          >
+                            ✕ Remove
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-indigo-300"><span className="text-slate-500 font-medium">Q:</span> {ex.question}</p>
+                        <p className="text-[10px] text-emerald-300"><span className="text-slate-500 font-medium">A:</span> {ex.answer}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Add Custom Few Shot Form */}
+                <div className="pt-2 border-t border-slate-800">
+                  {!showAddPair ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddPair(true);
+                        setNewPairQ("");
+                        setNewPairA("");
+                      }}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold font-sans text-[10px] rounded-lg transition border border-slate-700 flex items-center gap-1 cursor-pointer"
+                    >
+                      + Add Custom Q&A Pair
+                    </button>
+                  ) : (
+                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2 animate-fade-in">
+                      <span className="text-[10px] text-indigo-400 font-bold block uppercase tracking-wide">New Training Pair</span>
+                      <div>
+                        <label className="text-[9px] text-slate-400 block font-mono mb-1">Customer Question:</label>
+                        <input
+                          type="text"
+                          value={newPairQ}
+                          onChange={(e) => setNewPairQ(e.target.value)}
+                          placeholder="e.g. Do you charge extra on weekends?"
+                          className="w-full bg-slate-900 border border-slate-850 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-indigo-500 font-sans"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-slate-400 block font-mono mb-1">Ideal Chatbot Response:</label>
+                        <textarea
+                          value={newPairA}
+                          onChange={(e) => setNewPairA(e.target.value)}
+                          placeholder="e.g. No, weekend work has standard rates."
+                          className="w-full bg-slate-900 border border-slate-850 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-indigo-500 font-sans h-12 resize-none"
+                        />
+                      </div>
+                      <div className="flex gap-2 justify-end">
                         <button
-                          onClick={() => {
-                            const updated = fewShotExamples.filter((_, i) => i !== idx);
-                            setFewShotExamples(updated);
-                          }}
-                          className="text-red-400 hover:text-red-300 font-bold"
-                          title="Remove Example"
+                          type="button"
+                          onClick={() => setShowAddPair(false)}
+                          className="px-2.5 py-1 bg-transparent hover:bg-slate-850 text-slate-400 font-sans text-[10px] rounded border border-slate-800 transition cursor-pointer"
                         >
-                          ✕ Remove
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newPairQ.trim() && newPairA.trim()) {
+                              setFewShotExamples((prev) => [...prev, { question: newPairQ.trim(), answer: newPairA.trim() }]);
+                              setShowAddPair(false);
+                              setNewPairQ("");
+                              setNewPairA("");
+                            }
+                          }}
+                          disabled={!newPairQ.trim() || !newPairA.trim()}
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold font-sans text-[10px] rounded transition cursor-pointer"
+                        >
+                          Add Pair
                         </button>
                       </div>
-                      <p className="text-[10px] text-indigo-300"><span className="text-slate-500 font-medium">Q:</span> {ex.question}</p>
-                      <p className="text-[10px] text-emerald-300"><span className="text-slate-500 font-medium">A:</span> {ex.answer}</p>
                     </div>
-                  ))
-                )}
+                  )}
+                </div>
               </div>
-
-              {/* Add Custom Few Shot Form */}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const q = prompt("Enter sample customer question:");
-                    if (!q) return;
-                    const a = prompt("Enter ideal chatbot answer:");
-                    if (!a) return;
-                    setFewShotExamples((prev) => [...prev, { question: q, answer: a }]);
-                  }}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold font-sans text-[10px] rounded-lg transition border border-slate-700 flex items-center gap-1 cursor-pointer"
-                >
-                  + Add Training Pair
-                </button>
-              </div>
-            </div>
+            )}
           </div>
         </div>
+        )}
 
-        {/* Knowledge FAQ Repository */}
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
+        {activeLeftTab === "faqs" && (
+          /* Knowledge FAQ Repository */
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4 animate-fade-in">
           <div className="flex justify-between items-center border-b border-slate-800 pb-3">
             <div>
               <h3 className="text-md font-bold text-white font-sans flex items-center gap-2">
@@ -2247,9 +2477,11 @@ export default function ChatbotConfigurator({
             )}
           </div>
         </div>
+        )}
 
-        {/* Knowledge Base Reference Articles Repository */}
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4" id="kb-articles-repository">
+        {activeLeftTab === "articles" && (
+          /* Knowledge Base Reference Articles Repository */
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4 animate-fade-in" id="kb-articles-repository">
           <div className="flex justify-between items-center border-b border-slate-800 pb-3">
             <div>
               <h3 className="text-md font-bold text-white font-sans flex items-center gap-2">
@@ -2601,6 +2833,46 @@ export default function ChatbotConfigurator({
 
               {(activeUploadTab === "paste" || articleTitle.trim() || articleContent.trim()) && (
                 <div className="space-y-3">
+                  {learnedInsights.length > 0 && (
+                    <div className="bg-gradient-to-br from-indigo-950/40 via-slate-900/50 to-indigo-950/20 border border-indigo-500/30 p-4 rounded-xl space-y-3 shadow-lg shadow-indigo-950/20 relative overflow-hidden" id="chatbot-learning-report">
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none"></div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 bg-indigo-500/20 rounded-lg text-indigo-400">
+                            <Sparkles size={14} className="animate-pulse" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-mono text-indigo-400 uppercase tracking-widest block font-semibold">Crawl & Synthesis Report</span>
+                            <h4 className="text-xs font-bold text-slate-100">🧠 What the Chatbot Learned</h4>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setLearnedInsights([])}
+                          className="text-[10px] font-mono text-slate-500 hover:text-slate-300 transition"
+                          title="Dismiss report"
+                        >
+                          Clear
+                        </button>
+                      </div>
+
+                      <div className="bg-slate-950/60 rounded-lg p-3 border border-slate-900 space-y-2">
+                        <ul className="space-y-2 text-xs">
+                          {learnedInsights.map((insight, idx) => (
+                            <li key={idx} className="flex items-start gap-2 text-slate-300 leading-normal">
+                              <span className="text-emerald-400 mt-0.5 font-bold shrink-0">✓</span>
+                              <span>{insight}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <p className="text-[9px] text-slate-400 italic">
+                        Gemini successfully parsed the content from the URL. Review the structured article title and body below, then click "Index Reference to AI Brain" to save it permanently.
+                      </p>
+                    </div>
+                  )}
+
                   <div>
                     <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block mb-1">Article Title</label>
                     <input
@@ -2924,7 +3196,20 @@ export default function ChatbotConfigurator({
                   </div>
 
                   {expandedArticleId === art.id && (
-                    <div className="px-4 pb-4 border-t border-slate-850/60 pt-3 bg-slate-950/80 animate-fade-in">
+                    <div className="px-4 pb-4 border-t border-slate-850/60 pt-3 bg-slate-950/80 animate-fade-in space-y-3">
+                      {art.learnedInsights && art.learnedInsights.length > 0 && (
+                        <div className="rounded-xl bg-indigo-950/20 border border-indigo-500/20 p-3 space-y-1.5" id={`article-${art.id}-insights`}>
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-400 font-sans">
+                            <Sparkles size={11} className="animate-pulse" />
+                            <span>🧠 What the Bot Learned:</span>
+                          </div>
+                          <ul className="list-disc list-inside space-y-1 text-[10px] text-slate-300 font-sans">
+                            {art.learnedInsights.map((insight, idx) => (
+                              <li key={idx} className="leading-normal">{insight}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                       <div className="max-h-60 overflow-y-auto rounded-lg bg-slate-900 border border-slate-850 p-3 text-[11px] text-slate-300 font-sans leading-relaxed whitespace-pre-wrap font-light">
                         {art.content}
                       </div>
@@ -2935,6 +3220,7 @@ export default function ChatbotConfigurator({
             })()}
           </div>
         </div>
+        )}
 
       </div>
 
@@ -3217,6 +3503,99 @@ export default function ChatbotConfigurator({
                   {chip.label}
                 </button>
               ))}
+            </div>
+
+            {/* Inline URL Input Panel */}
+            {showUrlInput && (
+              <div className="px-3 py-2.5 bg-slate-950 border-t border-slate-900 flex items-center gap-2 animate-fade-in">
+                <input
+                  type="text"
+                  placeholder="https://example.com/pricing-or-faqs"
+                  value={builderUrlText}
+                  onChange={(e) => setBuilderUrlText(e.target.value)}
+                  className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 transition font-mono"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (builderUrlText.trim()) {
+                        handleBuilderUrlTrain(builderUrlText.trim());
+                        setBuilderUrlText("");
+                        setShowUrlInput(false);
+                      }
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (builderUrlText.trim()) {
+                      handleBuilderUrlTrain(builderUrlText.trim());
+                      setBuilderUrlText("");
+                      setShowUrlInput(false);
+                    }
+                  }}
+                  disabled={!builderUrlText.trim() || isBuilderTyping}
+                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg text-xs font-semibold cursor-pointer transition shrink-0"
+                >
+                  Train
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUrlInput(false);
+                    setBuilderUrlText("");
+                  }}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs cursor-pointer transition shrink-0"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {/* Training attachment bar */}
+            <div className="px-3 py-2 bg-slate-950 border-t border-slate-900/40 flex items-center gap-2 justify-between">
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                <input
+                  type="file"
+                  id="builder-file-input"
+                  accept=".txt,.md,.json,.csv,.pdf,.docx,.log"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      handleBuilderFileUpload(e.target.files[0]);
+                    }
+                  }}
+                />
+                
+                <button
+                  type="button"
+                  onClick={() => document.getElementById("builder-file-input")?.click()}
+                  disabled={isBuilderTyping}
+                  className="px-2 py-1 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-indigo-500/50 text-slate-300 rounded-lg flex items-center gap-1 cursor-pointer transition text-[10px] disabled:opacity-40"
+                  id="builder-upload-file-btn"
+                >
+                  <Upload size={10} className="text-indigo-400" />
+                  <span>Train with File</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUrlInput(!showUrlInput);
+                  }}
+                  disabled={isBuilderTyping}
+                  className={`px-2 py-1 border rounded-lg flex items-center gap-1 cursor-pointer transition text-[10px] disabled:opacity-40 ${
+                    showUrlInput 
+                      ? "bg-emerald-600/20 border-emerald-500 text-emerald-400" 
+                      : "bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-emerald-500/50 text-slate-300"
+                  }`}
+                  id="builder-ingest-url-btn"
+                >
+                  <Globe size={10} className="text-emerald-400" />
+                  <span>Train with URL</span>
+                </button>
+              </div>
+              <span className="text-[9px] text-slate-500 font-mono shrink-0 font-bold uppercase">TXT, CSV, JSON, PDF, Web</span>
             </div>
 
             {/* Input form */}

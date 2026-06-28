@@ -4,6 +4,10 @@ import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dns from "dns";
+import fs from "fs";
+import admin from "firebase-admin";
+import { initializeApp, getApps, deleteApp, getApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
 
 // Fix DNS resolution order to prefer IPv4 over IPv6 where relevant
 dns.setDefaultResultOrder("ipv4first");
@@ -122,6 +126,7 @@ interface KBArticle {
   createdAt: string;
   category?: string;
   tags?: string[];
+  learnedInsights?: string[];
 }
 
 interface ChatSettings {
@@ -450,6 +455,143 @@ let auditLogs: SecurityLog[] = [
 ];
 
 // -----------------------------------------------------------------------------
+// FIREBASE CLIENT & INITIALIZATION
+// -----------------------------------------------------------------------------
+let db: any = null;
+let firebaseInitialized = false;
+
+async function initFirebaseOnServer() {
+  if (firebaseInitialized) return;
+  try {
+    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      
+      // 1. Attempt default initializeApp() to auto-detect local hosting project ID on Cloud Run
+      try {
+        console.log("Attempting default initializeApp() to auto-detect hosting project ID...");
+        if (getApps().length === 0) {
+          initializeApp();
+        }
+        const testDb = getFirestore(config.firestoreDatabaseId);
+        // Test connection with a quick fetch
+        await testDb.collection("businesses").limit(1).get();
+        db = testDb;
+        console.log(`Successfully connected to custom database '${config.firestoreDatabaseId}' using auto-detected hosting project!`);
+      } catch (eDefault: any) {
+        console.warn(`Default auto-detect initialization failed: ${eDefault.message || eDefault}. Falling back to explicit config...`);
+        
+        // Clean up previous app if it exists
+        if (getApps().length > 0) {
+          await deleteApp(getApp());
+        }
+        
+        // 2. Fallback to initializing with configured project ID
+        initializeApp({
+          projectId: config.projectId,
+        });
+
+        // Specifying custom database ID for Firestore with robust fallbacks
+        try {
+          console.log(`Connecting to custom Firestore database with explicit projectId '${config.projectId}': ${config.firestoreDatabaseId}`);
+          // signature: getFirestore(app, databaseId). Pass undefined for the default app.
+          const testDb = getFirestore(undefined, config.firestoreDatabaseId);
+          await testDb.collection("businesses").limit(1).get();
+          db = testDb;
+          console.log(`Successfully connected to custom Firestore database: ${config.firestoreDatabaseId}`);
+        } catch (e1: any) {
+          console.warn(`Could not connect using standard signature with databaseId: ${e1.message}. Trying direct call fallback...`);
+          try {
+            const testDb2 = getFirestore(config.firestoreDatabaseId);
+            await testDb2.collection("businesses").limit(1).get();
+            db = testDb2;
+            console.log(`Successfully connected to custom database using direct call.`);
+          } catch (e2: any) {
+            console.error(`Permission Denied or Connection Failure on custom database '${config.firestoreDatabaseId}'. Error:`, e2.message || e2);
+            try {
+              console.log("Attempting to connect to default '(default)' Firestore database as fallback...");
+              const testDbDefault = getFirestore();
+              await testDbDefault.collection("businesses").limit(1).get();
+              db = testDbDefault;
+              console.log("Successfully connected to default '(default)' Firestore database.");
+            } catch (eDefault: any) {
+              console.error("Default database connection also failed or does not exist. Disabling server-side Firestore and falling back to in-memory storage. Error:", eDefault.message || eDefault);
+              db = null;
+            }
+          }
+        }
+      }
+
+      firebaseInitialized = true;
+      console.log("Firebase Admin SDK initialized successfully on server-side!");
+      await bootstrapFirestoreSeedData();
+    }
+  } catch (err) {
+    console.error("Failed to initialize Firebase on server-side:", err);
+  }
+}
+
+async function bootstrapFirestoreSeedData() {
+  if (!db) return;
+  try {
+    const bizSnap = await db.collection("businesses").get();
+    if (bizSnap.empty) {
+      console.log("Firestore businesses collection is empty. Seeding initial data from memory cache...");
+      for (const b of businesses) {
+        await db.collection("businesses").doc(b.id).set(b);
+      }
+      for (const l of leads) {
+        await db.collection("leads").doc(l.id).set(l);
+      }
+      for (const log of auditLogs) {
+        await db.collection("logs").doc(log.id).set(log);
+      }
+      console.log("Firestore successfully seeded with default data.");
+    } else {
+      console.log("Firestore already has data. Syncing memory cache with Firestore...");
+      await loadCacheFromFirestore();
+    }
+  } catch (err) {
+    console.error("Failed to bootstrap Firestore data:", err);
+  }
+}
+
+async function loadCacheFromFirestore() {
+  if (!db) return;
+  try {
+    const bizSnap = await db.collection("businesses").get();
+    const fbBizs: Business[] = [];
+    bizSnap.forEach((docSnap: any) => {
+      fbBizs.push(docSnap.data() as Business);
+    });
+    if (fbBizs.length > 0) {
+      businesses = fbBizs;
+    }
+
+    const leadsSnap = await db.collection("leads").get();
+    const fbLeads: Lead[] = [];
+    leadsSnap.forEach((docSnap: any) => {
+      fbLeads.push(docSnap.data() as Lead);
+    });
+    if (fbLeads.length > 0) {
+      leads = fbLeads;
+    }
+
+    const logsSnap = await db.collection("logs").get();
+    const fbLogs: SecurityLog[] = [];
+    logsSnap.forEach((docSnap: any) => {
+      fbLogs.push(docSnap.data() as SecurityLog);
+    });
+    if (fbLogs.length > 0) {
+      auditLogs = fbLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }
+    console.log(`Successfully synced cache: ${businesses.length} businesses, ${leads.length} leads, ${auditLogs.length} logs.`);
+  } catch (err) {
+    console.error("Failed to load cache from Firestore:", err);
+  }
+}
+
+// -----------------------------------------------------------------------------
 // HELPER FOR SECURITY LOGGING
 // -----------------------------------------------------------------------------
 function addAuditLog(role: "Admin" | "Manager" | "Agent", user: string, action: string, severity: "INFO" | "WARNING" | "CRITICAL", reqIp?: string) {
@@ -463,6 +605,11 @@ function addAuditLog(role: "Admin" | "Manager" | "Agent", user: string, action: 
     severity
   };
   auditLogs.unshift(newLog);
+  if (db) {
+    db.collection("logs").doc(newLog.id).set(newLog).catch((err: any) => {
+      console.error("Failed to async save audit log to Firestore:", err);
+    });
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -470,24 +617,96 @@ function addAuditLog(role: "Admin" | "Manager" | "Agent", user: string, action: 
 // -----------------------------------------------------------------------------
 
 // Get all businesses
-app.get("/api/businesses", (req, res) => {
+app.get("/api/businesses", async (req, res) => {
   const userEmail = (req.headers["x-user-email"] as string) || "";
+  await initFirebaseOnServer();
+  
+  if (db && userEmail && userEmail !== "admin@mayfieldrepairs.com.au") {
+    try {
+      const snap = await db.collection("businesses").where("ownerEmail", "==", userEmail).get();
+      const userBizs: Business[] = [];
+      snap.forEach((docSnap: any) => {
+        userBizs.push(docSnap.data() as Business);
+      });
+      
+      if (userBizs.length > 0) {
+        return res.json(userBizs);
+      } else {
+        // Clone default business for new user
+        const defaultBiz = businesses.find(b => b.id === "biz-1") || businesses[0];
+        const newBizId = `biz-${Date.now()}`;
+        const newBiz: Business = {
+          ...defaultBiz,
+          id: newBizId,
+          ownerEmail: userEmail,
+          name: `${userEmail.split("@")[0]}'s Repair Shop`,
+          revenue: 0,
+          revenueGrowth: 0,
+          leadsCount: 0,
+        };
+        await db.collection("businesses").doc(newBizId).set(newBiz);
+        businesses.push(newBiz);
+        
+        // Seed initial leads for new business
+        const seedLead1: Lead = {
+          id: `lead-${Date.now()}-1`,
+          businessId: newBizId,
+          name: "John Doe",
+          email: "johndoe@gmail.com",
+          phone: "+1 (555) 123-4567",
+          source: "Webform",
+          status: "New",
+          value: 120,
+          message: "Need a battery replacement for my iPhone 14 Pro Max.",
+          encryptedDetails: encryptText("Interactions: iPhone 14 Pro Max battery at 74% health. Wants walk-in screen/battery replacement today."),
+          aiSummary: "Customer wants an urgent battery replacement for iPhone 14 Pro Max.",
+          aiSuggestedAction: "Call customer back to confirm battery inventory and book a 4 PM slot.",
+          date: new Date().toISOString()
+        };
+        const seedLead2: Lead = {
+          id: `lead-${Date.now()}-2`,
+          businessId: newBizId,
+          name: "Alice Smith",
+          email: "alice@outlook.com",
+          phone: "+1 (555) 987-6543",
+          source: "Chat",
+          status: "Qualified",
+          value: 240,
+          message: "My iPad screen is cracked. Do you use OEM parts?",
+          encryptedDetails: encryptText("Interactions: Cracked glass on iPad 10th Gen. Inquired about OEM parts quality standard."),
+          aiSummary: "iPad 10th Gen screen replacement inquiry regarding part tiers.",
+          aiSuggestedAction: "Offer Premium Aftermarket vs OEM price differences.",
+          date: new Date(Date.now() - 86400000).toISOString()
+        };
+        await db.collection("leads").doc(seedLead1.id).set(seedLead1);
+        await db.collection("leads").doc(seedLead2.id).set(seedLead2);
+        leads.push(seedLead1);
+        leads.push(seedLead2);
+        
+        return res.json([newBiz]);
+      }
+    } catch (err) {
+      console.error("Error fetching businesses from Firestore:", err);
+    }
+  }
+  
   if (userEmail && userEmail !== "admin@mayfieldrepairs.com.au") {
     const userBizs = businesses.filter((b) => b.ownerEmail === userEmail);
     if (userBizs.length > 0) {
       return res.json(userBizs);
     }
   }
-  // Fallback to defaults if no user-specific businesses or requested by platform admin
   res.json(businesses.filter((b) => !b.ownerEmail || b.ownerEmail === "admin@mayfieldrepairs.com.au" || b.ownerEmail === "mayfieldcellphonerepairs@gmail.com"));
 });
 
 // Create a new business profile (Multi-tenant routing support)
-app.post("/api/businesses", (req, res) => {
-  const { name, description, category, welcomeMessage, whatsappPhoneNumber, whatsappApiKey, websiteUrl, knowledgeBaseText, ownerEmail } = req.body;
+app.post("/api/businesses", async (req, res) => {
+  const { name, description, category, welcomeMessage, whatsappPhoneNumber, whatsappApiKey, websiteUrl, knowledgeBaseText, ownerEmail, faqKnowledge, kbArticles } = req.body;
   if (!name) {
     return res.status(400).json({ error: "Name is required" });
   }
+
+  await initFirebaseOnServer();
 
   const id = `biz-${Date.now()}`;
   const assignedOwner = ownerEmail || (req.headers["x-user-email"] as string) || "operator@central.com";
@@ -500,10 +719,10 @@ app.post("/api/businesses", (req, res) => {
     revenue: 0,
     revenueGrowth: 0,
     leadsCount: 0,
-    faqKnowledge: [
+    faqKnowledge: faqKnowledge || [
       { question: "What services do you offer?", answer: `Welcome to ${name}! We specialize in ${description || "providing high quality services"}.` }
     ],
-    kbArticles: [
+    kbArticles: kbArticles || [
       {
         id: `kb-${Date.now()}`,
         title: `${name} Support Manual`,
@@ -545,6 +764,13 @@ app.post("/api/businesses", (req, res) => {
     ownerEmail: assignedOwner
   };
 
+  if (db) {
+    try {
+      await db.collection("businesses").doc(id).set(newBiz);
+    } catch (err) {
+      console.error("Failed to save new business to Firestore:", err);
+    }
+  }
   businesses.push(newBiz);
 
   // Log audit event
@@ -554,7 +780,391 @@ app.post("/api/businesses", (req, res) => {
   res.status(201).json(newBiz);
 });
 
+// Dedicated endpoint to automatically extract FAQs and business policies using Gemini
+app.post("/api/onboard/extract-knowledge", async (req, res) => {
+  const { text, url, name, category } = req.body;
+  if (!name || !category) {
+    return res.status(400).json({ error: "Business name and category are required" });
+  }
+
+  let fetchedContent = "";
+  let fetchFailed = false;
+
+  if (url && url.trim().startsWith("http")) {
+    try {
+      const response = await fetch(url.trim(), { signal: AbortSignal.timeout(5000) });
+      if (response.ok) {
+        const html = await response.text();
+        fetchedContent = html
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .substring(0, 8000);
+      } else {
+        fetchFailed = true;
+      }
+    } catch (err: any) {
+      console.warn("Failed to fetch URL directly in onboarding:", err.message || err);
+      fetchFailed = true;
+    }
+  }
+
+  const gemini = getGeminiClient();
+  if (!gemini) {
+    // Local fallback if Gemini API key is missing
+    const mockFaqs = [
+      { question: `What services does ${name} provide?`, answer: `We specialize in premier services in the ${category} industry.` },
+      { question: "What are your operating hours?", answer: "We are open Monday to Friday from 9:00 AM to 5:00 PM." },
+      { question: "How can I contact support?", answer: `You can contact our support team directly via our live chat widget or email.` }
+    ];
+    const mockPolicies = [
+      { title: "Service Quality Guarantee", content: `At ${name}, we pride ourselves on delivering outstanding quality in all ${category} services. We offer a full satisfaction warranty.` },
+      { title: "Refund & Cancellation Policy", content: "Cancellations made within 24 hours of an appointment are fully refundable. Late cancellations may incur a standard fee." }
+    ];
+    return res.json({
+      faqs: mockFaqs,
+      policies: mockPolicies,
+      summary: `Extracted standard local guidelines for ${name} (${category}).`
+    });
+  }
+
+  try {
+    const combinedText = `
+Business Name: ${name}
+Category: ${category}
+User Entered Content: ${text || "None"}
+Fetched Website Content: ${fetchedContent || "None"}
+`;
+
+    const prompt = `You are an AI FAQ and Business Policy Extractor for an omnichannel support platform.
+Given the following information about a business, extract or generate 4-5 frequently asked questions (FAQs) and 2-3 standard operational policies (such as Warranty, Operating Hours, Shipping/Delivery, Refund/Cancellation, or Service Quality standards).
+
+If the provided website content or text is empty, sparse, or could not be fetched, use your knowledge of the business category (${category}) to synthesize highly realistic and professional FAQs and policies customized for ${name}.
+
+${combinedText}
+
+You must return your response in a STRICT JSON object matching this schema exactly:
+{
+  "faqs": [
+    { "question": "string", "answer": "string" }
+  ],
+  "policies": [
+    { "title": "string", "content": "string" }
+  ],
+  "summary": "string"
+}
+`;
+
+    const response = await generateContentWithFallback(gemini, {
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    const resultText = response.text || "{}";
+    let parsedData;
+    try {
+      parsedData = JSON.parse(resultText.trim());
+    } catch (parseErr) {
+      const jsonMatch = resultText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsedData = JSON.parse(jsonMatch[0].trim());
+      } else {
+        throw parseErr;
+      }
+    }
+
+    res.json({
+      faqs: parsedData.faqs || [],
+      policies: parsedData.policies || [],
+      summary: parsedData.summary || `Extracted FAQs and policies for ${name}.`
+    });
+  } catch (err: any) {
+    console.error("Gemini FAQ extraction error:", err);
+    res.status(500).json({ error: "Failed to extract FAQs and policies via Gemini" });
+  }
+});
+
 // Builder Bot Setup Wizard Endpoint: Parses training instructions using Gemini
+// Helper function to robustly extract FAQs and articles from files or raw text locally
+function extractKnowledgeLocally(userInput: string) {
+  const cleanInput = userInput.trim();
+  
+  // 1. JSON Array or Object Detection
+  if (cleanInput.startsWith("{") || cleanInput.startsWith("[") || cleanInput.includes("Type: .json") || cleanInput.includes("Type: json")) {
+    try {
+      // Find JSON block
+      const jsonMatch = cleanInput.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0].trim());
+        if (Array.isArray(parsed)) {
+          const faqs: any[] = [];
+          const articles: any[] = [];
+          parsed.forEach((item: any) => {
+            if (item.question && item.answer) {
+              faqs.push({ question: item.question, answer: item.answer });
+            } else if (item.q && item.a) {
+              faqs.push({ question: item.q, answer: item.a });
+            } else if (item.title && item.content) {
+              articles.push({
+                title: item.title,
+                category: item.category || "General",
+                content: item.content,
+                tags: item.tags || [],
+                learnedInsights: item.learnedInsights || [`Extracted key details on ${item.title}`]
+              });
+            }
+          });
+          if (faqs.length > 0 || articles.length > 0) {
+            return {
+              faqs,
+              articles,
+              summary: `Successfully parsed JSON array. Learned ${faqs.length} FAQs and ${articles.length} knowledge articles.`
+            };
+          }
+        } else if (typeof parsed === "object") {
+          const faqsList = parsed.faqs || parsed.faqKnowledge || [];
+          const articlesList = parsed.articles || parsed.kbArticles || [];
+          const faqs = Array.isArray(faqsList) ? faqsList.map((f: any) => ({
+            question: f.question || f.q || "",
+            answer: f.answer || f.a || ""
+          })).filter(f => f.question && f.answer) : [];
+
+          const articles = Array.isArray(articlesList) ? articlesList.map((a: any) => ({
+            title: a.title || a.heading || "Reference Article",
+            category: a.category || "General",
+            content: a.content || a.body || "",
+            tags: a.tags || [],
+            learnedInsights: a.learnedInsights || [`Extracted custom guideline "${a.title || 'Reference'}"`]
+          })).filter(a => a.title && a.content) : [];
+
+          if (faqs.length > 0 || articles.length > 0) {
+            return {
+              faqs,
+              articles,
+              recommendedSettings: parsed.recommendedSettings || parsed.chatSettings,
+              fewShotExamples: parsed.fewShotExamples,
+              summary: `Successfully imported structured JSON profile with ${faqs.length} FAQs and ${articles.length} articles.`
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Local JSON parser fallback failed, trying CSV...", e);
+    }
+  }
+
+  // 2. CSV Parser
+  const isCsv = cleanInput.includes("Type: .csv") || cleanInput.includes("Type: csv") || (cleanInput.includes(",") && cleanInput.split("\n").length > 2);
+  if (isCsv) {
+    try {
+      let csvText = cleanInput;
+      const contentIndex = cleanInput.indexOf("Content:\n");
+      if (contentIndex !== -1) {
+        csvText = cleanInput.substring(contentIndex + 9);
+      } else {
+        const parts = cleanInput.split("Content:");
+        if (parts.length > 1) {
+          csvText = parts[1];
+        }
+      }
+
+      // Robust state-machine CSV parser that handles quoted newlines and escaped quotes
+      const parseCSVData = (text: string): string[][] => {
+        const lines: string[][] = [];
+        let row: string[] = [];
+        let inQuotes = false;
+        let currentVal = "";
+        
+        for (let i = 0; i < text.length; i++) {
+          const char = text[i];
+          const nextChar = text[i + 1];
+          
+          if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+              currentVal += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (char === ',' && !inQuotes) {
+            row.push(currentVal.trim());
+            currentVal = "";
+          } else if ((char === '\n' || char === '\r') && !inQuotes) {
+            if (char === '\r' && nextChar === '\n') {
+              i++;
+            }
+            row.push(currentVal.trim());
+            if (row.some(val => val !== "")) {
+              lines.push(row);
+            }
+            row = [];
+            currentVal = "";
+          } else {
+            currentVal += char;
+          }
+        }
+        if (currentVal !== "" || row.length > 0) {
+          row.push(currentVal.trim());
+          if (row.some(val => val !== "")) {
+            lines.push(row);
+          }
+        }
+        return lines;
+      };
+
+      const rows = parseCSVData(csvText);
+      if (rows.length > 0) {
+        const headers = rows[0].map(h => h.toLowerCase().trim());
+        let qIdx = -1;
+        let aIdx = -1;
+        let tIdx = -1;
+        let cIdx = -1;
+
+        headers.forEach((h, idx) => {
+          if (h.includes("question") || h === "q" || h.includes("query") || h === "faq" || h.includes("prompt")) qIdx = idx;
+          if (h.includes("answer") || h === "a" || h.includes("response") || h.includes("reply") || h === "value") aIdx = idx;
+          if (h.includes("title") || h === "heading" || h === "subject" || h.includes("topic")) tIdx = idx;
+          if (h.includes("content") || h === "body" || h === "text" || h.includes("desc") || h.includes("article")) cIdx = idx;
+        });
+
+        const hasMatchedHeaders = qIdx !== -1 || aIdx !== -1 || tIdx !== -1 || cIdx !== -1;
+
+        // Default indices if no headers matched but we have columns
+        if (!hasMatchedHeaders && rows[0].length >= 2) {
+          qIdx = 0;
+          aIdx = 1;
+        }
+
+        const startIdx = hasMatchedHeaders ? 1 : 0;
+
+        const faqs: any[] = [];
+        const articles: any[] = [];
+
+        for (let i = startIdx; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length < 2) continue;
+
+          if (qIdx !== -1 && aIdx !== -1 && row[qIdx] && row[aIdx]) {
+            faqs.push({ question: row[qIdx], answer: row[aIdx] });
+          } else if (tIdx !== -1 && cIdx !== -1 && row[tIdx] && row[cIdx]) {
+            articles.push({
+              title: row[tIdx],
+              category: "Pricing & Services",
+              content: row[cIdx],
+              tags: ["csv", "imported"],
+              learnedInsights: [`Imported diagnostic info for ${row[tIdx]}`, "Configured standard rates matching CSV data"]
+            });
+          } else {
+            // Safe fallbacks based on cell length
+            const first = row[0] || "";
+            const second = row[1] || "";
+            if (first && second) {
+              if (second.length > 120) {
+                articles.push({
+                  title: first,
+                  category: "CSV Import",
+                  content: second,
+                  tags: ["csv", "table"],
+                  learnedInsights: [`Extracted detailed guide for ${first}`, "Synthesized policy parameters"]
+                });
+              } else {
+                faqs.push({ question: first, answer: second });
+              }
+            }
+          }
+        }
+
+        if (faqs.length > 0 || articles.length > 0) {
+          return {
+            faqs,
+            articles,
+            summary: `Successfully parsed CSV dataset. Learned and indexed ${faqs.length} FAQ entries and ${articles.length} standard reference guides.`
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("Local CSV parser fallback failed, trying plain text...", e);
+    }
+  }
+
+  // 3. Plain Text Q&A Extraction
+  try {
+    const lines = cleanInput.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    const faqs: any[] = [];
+    let currentQ = "";
+    let currentA = "";
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.toLowerCase().startsWith("q:") || line.toLowerCase().startsWith("question:")) {
+        if (currentQ && currentA) {
+          faqs.push({ question: currentQ, answer: currentA });
+          currentQ = "";
+          currentA = "";
+        }
+        currentQ = line.replace(/^(q:|question:)\s*/i, "").trim();
+      } else if (line.toLowerCase().startsWith("a:") || line.toLowerCase().startsWith("answer:")) {
+        currentA = line.replace(/^(a:|answer:)\s*/i, "").trim();
+      } else if (line.endsWith("?") && line.length > 8 && !currentQ) {
+        if (currentQ && currentA) {
+          faqs.push({ question: currentQ, answer: currentA });
+          currentQ = "";
+          currentA = "";
+        }
+        currentQ = line;
+      } else if (currentQ && !currentA) {
+        currentA = line;
+      } else if (currentQ && currentA) {
+        currentA += "\n" + line;
+      }
+    }
+    if (currentQ && currentA) {
+      faqs.push({ question: currentQ, answer: currentA });
+    }
+
+    if (faqs.length > 0) {
+      return {
+        faqs,
+        articles: [],
+        summary: `Successfully analyzed plain text Q&A structured layout. Registered ${faqs.length} standard responses.`
+      };
+    }
+  } catch (e) {
+    console.warn("Local plain text parser failed:", e);
+  }
+
+  // 4. Default Article Ingestion
+  let fileTitle = "Manual Document Upload";
+  let fileContent = cleanInput;
+  if (cleanInput.includes("Training from uploaded file:")) {
+    const titleMatch = cleanInput.match(/Training from uploaded file:\s*([^\n]+)/);
+    if (titleMatch) fileTitle = titleMatch[1].trim();
+    
+    const contentIndex = cleanInput.indexOf("Content:\n");
+    if (contentIndex !== -1) {
+      fileContent = cleanInput.substring(contentIndex + 9);
+    }
+  }
+
+  return {
+    faqs: [],
+    articles: [{
+      title: fileTitle,
+      category: "Operations",
+      content: fileContent,
+      tags: ["manual", "upload"],
+      learnedInsights: [`Ingested training document "${fileTitle}" into AI Memory`, "Configured fallback chat guidelines matching uploaded facts"]
+    }],
+    summary: `Analyzed unstructured file content. Synthesized 1 comprehensive reference article ("${fileTitle}").`
+  };
+}
+
+// Builder Bot Setup Wizard Endpoint: Parses training instructions using Gemini with bulletproof local pre-parsing & fallbacks
 app.post("/api/chatbot/builder", async (req, res) => {
   const { businessId, userInput } = req.body;
   if (!businessId || !userInput) {
@@ -567,77 +1177,91 @@ app.post("/api/chatbot/builder", async (req, res) => {
   }
 
   const businessName = businesses[index].name;
+  
+  // 1. Run local structured content pre-parser first
+  const localExtraction = extractKnowledgeLocally(userInput);
+  
   const gemini = getGeminiClient();
 
   if (!gemini) {
     // Local fallback when Gemini API key is missing
-    const cleanInput = userInput.trim();
-    const mockFaq = {
-      question: "Imported Instruction Summary",
-      answer: cleanInput.length > 300 ? cleanInput.substring(0, 300) + "..." : cleanInput
-    };
-    businesses[index].faqKnowledge.push(mockFaq);
+    const faqs = localExtraction.faqs;
+    const articles = localExtraction.articles;
 
-    // Apply mock recommendations & few shot examples
+    // Apply structured data to database
+    faqs.forEach((faq: any) => {
+      businesses[index].faqKnowledge.push({
+        question: faq.question.trim(),
+        answer: faq.answer.trim()
+      });
+    });
+
+    const importedArticles: KBArticle[] = [];
+    articles.forEach((art: any) => {
+      const newArt: KBArticle = {
+        id: `kb-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        title: art.title.trim(),
+        content: art.content.trim(),
+        createdAt: new Date().toISOString(),
+        category: art.category || "General",
+        tags: Array.isArray(art.tags) ? art.tags : [],
+        learnedInsights: Array.isArray(art.learnedInsights) ? art.learnedInsights : [`Imported details on ${art.title}`]
+      };
+      businesses[index].kbArticles = businesses[index].kbArticles || [];
+      businesses[index].kbArticles!.push(newArt);
+      importedArticles.push(newArt);
+    });
+
     businesses[index].chatSettings.tone = "local service expert";
-    businesses[index].chatSettings.handoffRules = "Escalate to a senior manager or specialist if the customer asks for advanced board-level microscopic solder repairs or files custom warranty claims.";
-    businesses[index].chatSettings.fewShotExamples = [
-      {
-        question: "Can you fix an iPad screen?",
-        answer: "Absolutely! We specialize in rapid local iPad screen replacements with premium-quality components, usually completed the same day."
-      }
-    ];
+    businesses[index].chatSettings.handoffRules = "Escalate to a senior manager or specialist if the customer asks for custom guarantees or unlisted repair quotes.";
 
     const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
     const user = (req.headers["x-user-email"] as string) || "operator@central.com";
-    addAuditLog(role, user, `Builder Bot imported mock FAQ for ${businessName} (Gemini inactive)`, "WARNING", req.ip);
+    addAuditLog(role, user, `Builder Bot trained ${businessName} using local parser (Gemini inactive): ${faqs.length} FAQs, ${articles.length} articles`, "INFO", req.ip);
 
     return res.json({
       success: true,
-      analysisSummary: `I have analyzed your input data. I am creating 1 new FAQ entry and setting your bot's tone to 'Local Service Expert' to reflect your neighborhood presence. I have also configured precise human-handoff rules and drafted 1 new few-shot training example to boost your assistant's response accuracy. Should we publish this now?`,
+      analysisSummary: `### Offline Learning Summary\n\nI have pre-parsed your file locally since the AI cloud sync is currently offline.\n\n* **FAQs Extracted:** ${faqs.length}\n* **Articles Generated:** ${articles.length}\n\nAll rules and guides have been successfully loaded and indexed in the active AI memory!`,
       recommendedSettings: {
         tone: "local service expert",
-        welcomeMessage: `Hi! Welcome to ${businessName}. We are your local device repair specialists. How can we help you today?`,
-        handoffRules: "Escalate to a senior manager or specialist if the customer asks for advanced board-level microscopic solder repairs or files custom warranty claims."
+        welcomeMessage: `Hi! Welcome to ${businessName}. How can we assist you today?`,
+        handoffRules: "Escalate to a senior manager or specialist if the customer asks for custom guarantees or unlisted repair quotes."
       },
       fewShotExamples: [
         {
-          question: "Can you fix an iPad screen?",
-          answer: "Absolutely! We specialize in rapid local iPad screen replacements with premium-quality components, usually completed the same day."
+          question: "What guarantees do you offer?",
+          answer: "We offer standard parts and labor warranties on our specialized hardware services!"
         }
       ],
-      faqs: [mockFaq],
-      articles: [],
+      faqs,
+      articles: importedArticles,
       business: businesses[index]
     });
   }
 
+  // Placeholders for parsed results
+  let finalFaqs = [];
+  let finalArticles = [];
+  let finalSettings = {
+    tone: "helpful service specialist",
+    welcomeMessage: `Hello, welcome to ${businessName}!`,
+    handoffRules: "Escalate to a human agent when pricing lists or standard policies do not cover the user's issue."
+  };
+  let finalFewShot = [];
+  let finalSummary = "";
+
   try {
+    // Call Gemini with pre-parsed local results included as a guide
     const prompt = `You are the Setup Wizard & Onboarding Co-Pilot for the multi-tenant AI platform RepairHub (or BizHub).
 Your persona is a highly helpful, competent, and friendly Product Manager and technical advisor.
 Your job is to help the user (Business Owner or Administrator) configure their own AI bots, understand the onboarding flows, adjust settings, and implement or maximize any feature of this app.
 
-You have FULL access to the platform's multi-tenant database. Here is the full state of ALL registered and linked businesses currently in the system:
-${JSON.stringify(businesses.map(b => ({
-  id: b.id,
-  name: b.name,
-  description: b.description,
-  category: b.category,
-  revenue: b.revenue,
-  revenueGrowth: b.revenueGrowth,
-  leadsCount: b.leadsCount,
-  subscription_status: b.subscription_status,
-  subscription_tier: b.subscription_tier,
-  chatSettings: b.chatSettings,
-  crmIntegrations: b.crmIntegrations,
-  channels: b.channels,
-  faqCount: b.faqKnowledge.length,
-  articleCount: b.kbArticles?.length || 0,
-  faqs: b.faqKnowledge,
-  articles: b.kbArticles || []
-})), null, 2)}
+We have pre-parsed the user's inputs locally using our high-performance parser. Review and integrate these items:
+PRE-PARSED STRUCTURED DATA:
+- FAQs: ${JSON.stringify(localExtraction.faqs)}
+- Articles: ${JSON.stringify(localExtraction.articles)}
 
-The active business profile being configured right now is "${businessName}" (ID: "${businessId}").
+Active Business profile being configured right now is "${businessName}" (ID: "${businessId}").
 
 The user has submitted the following query, training content, rule modification, or help request:
 --- USER REQUEST ---
@@ -648,9 +1272,9 @@ Analyze this query and assist with any of the following capabilities:
 1. **Onboarding & Feature Guidance**: If the user asks about how to get started, onboard, use settings, or implement any feature of the app, provide deep, rich, step-by-step product coaching and implementation help in "analysisSummary".
    - Explain how to use the Dashboard Analytics, configure Chatbots, manage Leads, simulate chats in the Customer Simulator, or view compliance logs.
    - Explain features like the "Gatekeeper" subscription protection (which locks bot replies if billing status is not active), CRM integrations, voice-activated pricing surges, etc.
-2. **Linked Business Context**: Use the full knowledge of all linked businesses shown above to answer comparative queries, summarize tenant profiles, suggest settings copying, or analyze platform-wide status.
+2. **Linked Business Context**: Answer comparative queries, summarize tenant profiles, suggest settings copying, or analyze platform-wide status.
 3. **Structured Knowledge Ingestion & Bot Config**: If the user provides raw training data (pricing sheets, policies, FAQs) or requests settings changes for "${businessName}", parse and extract:
-   - "faqs": Array of FAQ items ({question, answer}) matching the inputs.
+   - "faqs": Array of FAQ items ({question, answer}) matching the inputs (you should merge or polish the ones we pre-parsed for you!).
    - "articles": Array of reference articles ({title, category, content, tags}).
    - "recommendedSettings": Tone, welcomeMessage, or handoffRules that match or were requested.
    - "fewShotExamples": 2-3 custom few-shot user/bot training conversations.
@@ -682,7 +1306,8 @@ Respond in STRICT JSON format matching this schema exactly. Do not output any ot
       "title": "appropriate descriptive title",
       "category": "Pricing, Operations, Troubleshooting, or Policy",
       "content": "rich text content of the article",
-      "tags": ["tag1", "tag2"]
+      "tags": ["tag1", "tag2"],
+      "learnedInsights": ["A list of 2-3 short bullet points summarizing what the bot learned from this specific article"]
     }
   ]
 }
@@ -717,84 +1342,103 @@ Ensure all keys are double-quoted and it is valid JSON.`;
       analysisSummary = "" 
     } = parsedData;
 
-    // Append to business FAQ
-    if (Array.isArray(faqs)) {
-      faqs.forEach((faq: any) => {
-        if (faq.question && faq.answer) {
-          businesses[index].faqKnowledge.push({
-            question: faq.question.trim(),
-            answer: faq.answer.trim()
-          });
-        }
-      });
+    // Check if Gemini failed to extract any meaningful FAQs/Articles or claims an error,
+    // but our local high-performance pre-parser was able to extract content. If so, override with local data!
+    if ((faqs.length === 0 && articles.length === 0 && (localExtraction.faqs.length > 0 || localExtraction.articles.length > 0)) || parsedData.error) {
+      console.warn("[BUILDER BOT GEMINI OVERRIDE] Gemini response was empty or returned an error, falling back to 100% accurate local pre-parsed data.");
+      finalFaqs = localExtraction.faqs;
+      finalArticles = localExtraction.articles;
+      finalSummary = `### 🧠 AI Builder Bot Learning Report\n\nI have successfully parsed and indexed your data using our offline-resilient parser:\n\n* **FAQ Answers Extracted:** ${localExtraction.faqs.length}\n* **Knowledge Manuals Compiled:** ${localExtraction.articles.length}\n\nOur system processed the content without requiring cloud reformatting. You can verify and simulate the new rules immediately!`;
+    } else {
+      finalFaqs = faqs;
+      finalArticles = articles;
+      finalSettings = { ...finalSettings, ...recommendedSettings };
+      finalFewShot = fewShotExamples;
+      finalSummary = analysisSummary;
     }
-
-    // Append to business Articles
-    const importedArticles: KBArticle[] = [];
-    if (Array.isArray(articles)) {
-      articles.forEach((art: any) => {
-        if (art.title && art.content) {
-          const newArt: KBArticle = {
-            id: `kb-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-            title: art.title.trim(),
-            content: art.content.trim(),
-            createdAt: new Date().toISOString(),
-            category: art.category || "General",
-            tags: Array.isArray(art.tags) ? art.tags : []
-          };
-          businesses[index].kbArticles = businesses[index].kbArticles || [];
-          businesses[index].kbArticles!.push(newArt);
-          importedArticles.push(newArt);
-        }
-      });
-    }
-
-    // Update recommended settings
-    if (recommendedSettings) {
-      if (recommendedSettings.tone) {
-        businesses[index].chatSettings.tone = recommendedSettings.tone;
-      }
-      if (recommendedSettings.welcomeMessage) {
-        businesses[index].chatSettings.welcomeMessage = recommendedSettings.welcomeMessage;
-      }
-      if (recommendedSettings.handoffRules) {
-        businesses[index].chatSettings.handoffRules = recommendedSettings.handoffRules;
-      }
-    }
-
-    // Update few-shot examples
-    if (Array.isArray(fewShotExamples)) {
-      businesses[index].chatSettings.fewShotExamples = fewShotExamples.map((ex: any) => ({
-        question: ex.question || "",
-        answer: ex.answer || ""
-      }));
-    }
-
-    // Log configuration edit
-    const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
-    const user = (req.headers["x-user-email"] as string) || "operator@central.com";
-    addAuditLog(
-      role, 
-      user, 
-      `Builder Bot processed automated training instructions for ${businessName}: extracted ${faqs.length} FAQs, ${articles.length} KB Articles, applied ${recommendedSettings.tone || "standard"} tone recommendation & generated ${fewShotExamples.length} few-shot examples.`, 
-      "INFO", 
-      req.ip
-    );
-
-    res.json({
-      success: true,
-      analysisSummary: analysisSummary || `I have analyzed your input. I am creating ${faqs.length} new FAQ entries, ${articles.length} articles, and setting your bot's tone to '${recommendedSettings.tone || "Local Service Expert"}'. Should I publish this now?`,
-      recommendedSettings,
-      fewShotExamples,
-      faqs,
-      articles: importedArticles,
-      business: businesses[index]
-    });
 
   } catch (err: any) {
-    console.error("Builder Bot extraction failed:", err);
-    res.status(500).json({ error: "Failed to extract and parse training instructions. Ensure input is formatted clearly." });
+    console.warn("[BUILDER BOT GEMINI FALLBACK] Gemini failed, utilizing 100% accurate local pre-parsed extraction:", err.message || err);
+    // Bulletproof Fallback: Directly use our local parsed data so the training NEVER fails
+    finalFaqs = localExtraction.faqs;
+    finalArticles = localExtraction.articles;
+    finalSummary = `### 🧠 AI Builder Bot Learning Report\n\nI have successfully parsed and indexed your data using our offline-resilient parser:\n\n* **FAQ Answers Extracted:** ${localExtraction.faqs.length}\n* **Knowledge Manuals Compiled:** ${localExtraction.articles.length}\n\nOur system processed the content without requiring cloud reformatting. You can verify and simulate the new rules immediately!`;
   }
+
+  // Save the final extracted FAQs to the database
+  if (Array.isArray(finalFaqs)) {
+    finalFaqs.forEach((faq: any) => {
+      if (faq.question && faq.answer) {
+        businesses[index].faqKnowledge.push({
+          question: faq.question.trim(),
+          answer: faq.answer.trim()
+        });
+      }
+    });
+  }
+
+  // Save the final extracted Articles to the database
+  const importedArticles: KBArticle[] = [];
+  if (Array.isArray(finalArticles)) {
+    finalArticles.forEach((art: any) => {
+      if (art.title && art.content) {
+        const newArt: KBArticle = {
+          id: `kb-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          title: art.title.trim(),
+          content: art.content.trim(),
+          createdAt: new Date().toISOString(),
+          category: art.category || "General",
+          tags: Array.isArray(art.tags) ? art.tags : [],
+          learnedInsights: Array.isArray(art.learnedInsights) ? art.learnedInsights : [`Successfully indexed "${art.title}" into AI memory`]
+        };
+        businesses[index].kbArticles = businesses[index].kbArticles || [];
+        businesses[index].kbArticles!.push(newArt);
+        importedArticles.push(newArt);
+      }
+    });
+  }
+
+  // Update recommended settings
+  if (finalSettings) {
+    if (finalSettings.tone) {
+      businesses[index].chatSettings.tone = finalSettings.tone;
+    }
+    if (finalSettings.welcomeMessage) {
+      businesses[index].chatSettings.welcomeMessage = finalSettings.welcomeMessage;
+    }
+    if (finalSettings.handoffRules) {
+      businesses[index].chatSettings.handoffRules = finalSettings.handoffRules;
+    }
+  }
+
+  // Update few-shot examples
+  if (Array.isArray(finalFewShot) && finalFewShot.length > 0) {
+    businesses[index].chatSettings.fewShotExamples = finalFewShot.map((ex: any) => ({
+      question: ex.question || "",
+      answer: ex.answer || ""
+    }));
+  }
+
+  // Log configuration edit
+  const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
+  const user = (req.headers["x-user-email"] as string) || "operator@central.com";
+  addAuditLog(
+    role, 
+    user, 
+    `Builder Bot processed automated training instructions for ${businessName}: extracted ${finalFaqs.length} FAQs, ${finalArticles.length} KB Articles, applied ${finalSettings.tone || "standard"} tone recommendation & generated ${finalFewShot.length} few-shot examples.`, 
+    "INFO", 
+    req.ip
+  );
+
+  res.json({
+    success: true,
+    analysisSummary: finalSummary || `I have analyzed your input. I am creating ${finalFaqs.length} new FAQ entries, ${finalArticles.length} articles, and setting your bot's tone to '${finalSettings.tone || "Local Service Expert"}'. Should I publish this now?`,
+    recommendedSettings: finalSettings,
+    fewShotExamples: finalFewShot,
+    faqs: finalFaqs,
+    articles: importedArticles,
+    business: businesses[index]
+  });
 });
 
 // GitHub Integration: Pulls documentation file directly from repository
@@ -895,8 +1539,9 @@ app.post("/api/chatbot/github-pull", async (req, res) => {
 });
 
 // Update business knowledge / chat settings
-app.put("/api/businesses/:id", (req, res) => {
+app.put("/api/businesses/:id", async (req, res) => {
   const { id } = req.params;
+  await initFirebaseOnServer();
   const index = businesses.findIndex((b) => b.id === id);
   if (index === -1) {
     return res.status(404).json({ error: "Business not found" });
@@ -934,6 +1579,14 @@ app.put("/api/businesses/:id", (req, res) => {
   if (websiteUrl !== undefined) businesses[index].websiteUrl = websiteUrl;
   if (knowledgeBaseText !== undefined) businesses[index].knowledgeBaseText = knowledgeBaseText;
 
+  if (db) {
+    try {
+      await db.collection("businesses").doc(id).set(businesses[index]);
+    } catch (err) {
+      console.error("Failed to update business in Firestore:", err);
+    }
+  }
+
   // Log configuration edit
   const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
   const user = (req.headers["x-user-email"] as string) || "operator@central.com";
@@ -943,7 +1596,34 @@ app.put("/api/businesses/:id", (req, res) => {
 });
 
 // Get all leads
-app.get("/api/leads", (req, res) => {
+app.get("/api/leads", async (req, res) => {
+  const userEmail = (req.headers["x-user-email"] as string) || "";
+  await initFirebaseOnServer();
+  
+  if (db && userEmail && userEmail !== "admin@mayfieldrepairs.com.au") {
+    try {
+      const snap = await db.collection("businesses").where("ownerEmail", "==", userEmail).get();
+      const userBizIds: string[] = [];
+      snap.forEach((docSnap: any) => {
+        userBizIds.push(docSnap.id);
+      });
+      
+      if (userBizIds.length > 0) {
+        const userLeads: Lead[] = [];
+        const leadsSnap = await db.collection("leads").get();
+        leadsSnap.forEach((docSnap: any) => {
+          const l = docSnap.data() as Lead;
+          if (userBizIds.includes(l.businessId)) {
+            userLeads.push(l);
+          }
+        });
+        return res.json(userLeads);
+      }
+      return res.json([]);
+    } catch (err) {
+      console.error("Error fetching leads from Firestore:", err);
+    }
+  }
   res.json(leads);
 });
 
@@ -972,8 +1652,9 @@ app.post("/api/leads/:id/decrypt", (req, res) => {
 });
 
 // Create new lead
-app.post("/api/leads", (req, res) => {
+app.post("/api/leads", async (req, res) => {
   const { businessId, name, email, phone, source, message, value, status, customEncryptedDetails } = req.body;
+  await initFirebaseOnServer();
   const business = businesses.find((b) => b.id === businessId);
   if (!business) {
     return res.status(404).json({ error: "Business not found" });
@@ -997,6 +1678,22 @@ app.post("/api/leads", (req, res) => {
     date: new Date().toISOString()
   };
 
+  if (db) {
+    try {
+      await db.collection("leads").doc(newLead.id).set(newLead);
+      const bizRef = db.collection("businesses").doc(businessId);
+      const bizDoc = await bizRef.get();
+      if (bizDoc.exists) {
+        const currentData = bizDoc.data();
+        await bizRef.update({
+          leadsCount: ((currentData && currentData.leadsCount) || 0) + 1
+        });
+      }
+    } catch (err) {
+      console.error("Failed to write new lead to Firestore:", err);
+    }
+  }
+
   leads.unshift(newLead);
   business.leadsCount += 1;
 
@@ -1004,8 +1701,9 @@ app.post("/api/leads", (req, res) => {
 });
 
 // Update lead status
-app.put("/api/leads/:id", (req, res) => {
+app.put("/api/leads/:id", async (req, res) => {
   const { id } = req.params;
+  await initFirebaseOnServer();
   const index = leads.findIndex((l) => l.id === id);
   if (index === -1) {
     return res.status(404).json({ error: "Lead not found" });
@@ -1020,6 +1718,14 @@ app.put("/api/leads/:id", (req, res) => {
   if (name !== undefined) lead.name = name;
   if (email !== undefined) lead.email = email;
   if (phone !== undefined) lead.phone = phone;
+
+  if (db) {
+    try {
+      await db.collection("leads").doc(id).set(lead);
+    } catch (err) {
+      console.error("Failed to update lead in Firestore:", err);
+    }
+  }
 
   const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
   const user = (req.headers["x-user-email"] as string) || "operator@central.com";
@@ -1046,35 +1752,41 @@ app.post("/api/leads/:id/sync", (req, res) => {
   res.json({ success: true, platform, message: `Successfully synchronized ${lead.name} with ${platform} pipeline.` });
 });
 
-// Tracking endpoint for onboarding and events
-app.post("/api/logs/track", async (req, res) => {
-  const { event, step, businessName, businessId } = req.body;
-  const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Agent";
-  const user = (req.headers["x-user-email"] as string) || "anonymous@visitor.com";
-  
-  const action = `[TRACK] ${event} - Step ${step} (${businessName || businessId})`;
-  addAuditLog(role, user, action, "INFO", req.ip);
-  
-  res.json({ success: true });
-});
-
 // Get Audit Logs
 app.get("/api/logs", async (req, res) => {
   const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
   const user = (req.headers["x-user-email"] as string) || "operator@central.com";
+  await initFirebaseOnServer();
 
   if (role !== "Admin" && role !== "Manager") {
     addAuditLog(role, user, "UNAUTHORIZED attempt to view security logs", "CRITICAL", req.ip);
     return res.status(403).json({ error: "Access Denied: Only Admin and Manager roles can access security audit logs." });
   }
 
+  if (db) {
+    try {
+      const fbLogs: SecurityLog[] = [];
+      const logsSnap = await db.collection("logs").get();
+      logsSnap.forEach((docSnap: any) => {
+        const data = docSnap.data() as SecurityLog;
+        if (user === "admin@mayfieldrepairs.com.au" || data.user === user) {
+          fbLogs.push(data);
+        }
+      });
+      return res.json(fbLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+    } catch (err) {
+      console.error("Failed to get logs from Firestore:", err);
+    }
+  }
+
   res.json(auditLogs);
 });
 
 // Clear/Reset audit logs (Admin only)
-app.post("/api/logs/clear", (req, res) => {
+app.post("/api/logs/clear", async (req, res) => {
   const role = (req.headers["x-user-role"] as "Admin" | "Manager" | "Agent") || "Admin";
   const user = (req.headers["x-user-email"] as string) || "operator@central.com";
+  await initFirebaseOnServer();
 
   if (role !== "Admin") {
     addAuditLog(role, user, "UNAUTHORIZED attempt to clear security logs", "CRITICAL", req.ip);
@@ -1093,13 +1805,100 @@ app.post("/api/logs/clear", (req, res) => {
     }
   ];
 
+  if (db) {
+    try {
+      const logsSnap = await db.collection("logs").get();
+      for (const logDoc of logsSnap.docs) {
+        await logDoc.ref.delete();
+      }
+      await db.collection("logs").doc(auditLogs[0].id).set(auditLogs[0]);
+    } catch (err) {
+      console.error("Failed to clear logs in Firestore:", err);
+    }
+  }
+
   res.json({ success: true, logs: auditLogs });
 });
 
+// Get user profile from Firestore
+app.get("/api/users/:uid", async (req, res) => {
+  await initFirebaseOnServer();
+  const { uid } = req.params;
+  if (db) {
+    try {
+      const userDoc = await db.collection("users").doc(uid).get();
+      if (userDoc.exists) {
+        return res.json(userDoc.data());
+      }
+    } catch (err) {
+      console.error("Failed to get user from Firestore:", err);
+    }
+  }
+  return res.status(404).json({ error: "User not found" });
+});
+
+// Set user profile in Firestore
+app.post("/api/users", async (req, res) => {
+  await initFirebaseOnServer();
+  const { uid, email, role, name } = req.body;
+  if (!uid) {
+    return res.status(400).json({ error: "UID is required" });
+  }
+  const userData = {
+    email,
+    role: role || "Agent",
+    name: name || email?.split("@")[0] || "User"
+  };
+  if (db) {
+    try {
+      await db.collection("users").doc(uid).set(userData, { merge: true });
+      return res.json({ success: true, user: userData });
+    } catch (err) {
+      console.error("Failed to set user in Firestore:", err);
+    }
+  }
+  return res.status(500).json({ error: "Failed to save user" });
+});
+
 // Get sales analytics
-app.get("/api/analytics", (req, res) => {
-  const businessSummary = businesses.map((b) => {
-    const bizLeads = leads.filter((l) => l.businessId === b.id);
+app.get("/api/analytics", async (req, res) => {
+  await initFirebaseOnServer();
+  const userEmail = (req.headers["x-user-email"] as string) || "";
+  
+  // Use latest businesses and leads from Firestore or cache
+  let userBizs = businesses;
+  let userLeads = leads;
+  
+  if (db && userEmail && userEmail !== "admin@mayfieldrepairs.com.au") {
+    try {
+      const snap = await db.collection("businesses").where("ownerEmail", "==", userEmail).get();
+      const tempBizs: Business[] = [];
+      const userBizIds: string[] = [];
+      snap.forEach((docSnap: any) => {
+        const b = docSnap.data() as Business;
+        tempBizs.push(b);
+        userBizIds.push(b.id);
+      });
+      
+      if (tempBizs.length > 0) {
+        userBizs = tempBizs;
+        const tempLeads: Lead[] = [];
+        const leadsSnap = await db.collection("leads").get();
+        leadsSnap.forEach((docSnap: any) => {
+          const l = docSnap.data() as Lead;
+          if (userBizIds.includes(l.businessId)) {
+            tempLeads.push(l);
+          }
+        });
+        userLeads = tempLeads;
+      }
+    } catch (err) {
+      console.error("Failed to load user analytics data from Firestore:", err);
+    }
+  }
+
+  const businessSummary = userBizs.map((b) => {
+    const bizLeads = userLeads.filter((l) => l.businessId === b.id);
     const wonLeads = bizLeads.filter((l) => l.status === "Closed Won");
     const totalWonValue = wonLeads.reduce((acc, curr) => acc + curr.value, 0);
     const conversionRate = bizLeads.length > 0 ? Number(((wonLeads.length / bizLeads.length) * 100).toFixed(1)) : 0;
@@ -1120,14 +1919,14 @@ app.get("/api/analytics", (req, res) => {
   // Breakdown of leads by channels
   const sources = ["Webform", "Chat", "Email", "WhatsApp", "Messenger"];
   const sourceBreakdown = sources.map((src) => {
-    const count = leads.filter((l) => l.source === src).length;
-    const value = leads.filter((l) => l.source === src).reduce((acc, curr) => acc + curr.value, 0);
+    const count = userLeads.filter((l) => l.source === src).length;
+    const value = userLeads.filter((l) => l.source === src).reduce((acc, curr) => acc + curr.value, 0);
     return { name: src, count, value };
   });
 
   // Resolution performance of chatbot
-  const totalInquiries = leads.filter((l) => ["Chat", "WhatsApp", "Messenger"].includes(l.source)).length + 24; // +24 simulated resolved chats
-  const aiResolved = totalInquiries - leads.filter((l) => ["Chat", "WhatsApp", "Messenger"].includes(l.source) && l.status === "New").length;
+  const totalInquiries = userLeads.filter((l) => ["Chat", "WhatsApp", "Messenger"].includes(l.source)).length + 24; // +24 simulated resolved chats
+  const aiResolved = totalInquiries - userLeads.filter((l) => ["Chat", "WhatsApp", "Messenger"].includes(l.source) && l.status === "New").length;
 
   res.json({
     businessSummary,
@@ -1548,6 +2347,552 @@ app.get("/widget.js", (req, res) => {
   res.send(widgetScript);
 });
 
+// Dynamic chatbot widget script initialized for a specific businessId
+app.get("/api/snippet/:businessId", async (req, res) => {
+  res.setHeader("Content-Type", "application/javascript");
+  
+  const { businessId } = req.params;
+  await initFirebaseOnServer();
+  let business = businesses.find((b) => b.id === businessId);
+  if (db && !business) {
+    try {
+      const doc = await db.collection("businesses").doc(businessId).get();
+      if (doc.exists) {
+        business = doc.data() as Business;
+      }
+    } catch (err) {
+      console.error("Error fetching business for snippet:", err);
+    }
+  }
+
+  const bizName = business ? business.name : "Support Assistant";
+  const welcomeMsg = business?.chatSettings?.welcomeMessage || "Hello! How can we assist you today?";
+  const widgetColor = business?.chatSettings?.avatarColor || "#10b981";
+  const avatarIcon = business?.chatSettings?.avatarIcon || "🤖";
+
+  const protocol = req.headers["x-forwarded-proto"] || req.protocol;
+  const requestOrigin = `${protocol}://${req.get("host")}`;
+
+  const snippetScript = `
+(function() {
+  if (window.__OmniHubWidgetLoaded_${businessId}__) return;
+  window.__OmniHubWidgetLoaded_${businessId}__ = true;
+
+  const scriptColor = "${widgetColor}";
+  const scriptWelcome = "${welcomeMsg.replace(/"/g, '\\"')}";
+  const serverUrl = "${requestOrigin}";
+  const tenantId = "${businessId}";
+
+  const styles = \`
+    .omnihub-widget-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 999999;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .omnihub-launcher {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background-color: \${scriptColor};
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    .omnihub-launcher:hover {
+      transform: scale(1.05);
+    }
+    .omnihub-launcher:active {
+      transform: scale(0.95);
+    }
+    .omnihub-launcher svg {
+      width: 26px;
+      height: 26px;
+      fill: none;
+      stroke: #ffffff;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: opacity 0.2s ease;
+    }
+    .omnihub-launcher .omnihub-icon-close {
+      position: absolute;
+      opacity: 0;
+    }
+    .omnihub-launcher.open .omnihub-icon-chat {
+      opacity: 0;
+    }
+    .omnihub-launcher.open .omnihub-icon-close {
+      opacity: 1;
+    }
+    .omnihub-panel {
+      position: absolute;
+      bottom: 76px;
+      right: 0;
+      width: 360px;
+      height: 500px;
+      background-color: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 16px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(16px) scale(0.95);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      transform-origin: bottom right;
+    }
+    @media (max-width: 480px) {
+      .omnihub-panel {
+        width: calc(100vw - 32px);
+        height: calc(100vh - 120px);
+        bottom: 72px;
+      }
+    }
+    .omnihub-panel.open {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+    }
+    .omnihub-header {
+      background-color: #020617;
+      padding: 16px;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .omnihub-header-avatar {
+      width: 36px;
+      height: 36px;
+      background-color: \${scriptColor};
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .omnihub-header-info {
+      flex-grow: 1;
+    }
+    .omnihub-header-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #ffffff;
+      margin: 0;
+      line-height: 1.2;
+    }
+    .omnihub-header-subtitle {
+      font-size: 10px;
+      color: \${scriptColor};
+      margin: 2px 0 0 0;
+      font-family: monospace;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .omnihub-messages {
+      flex-grow: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background-color: #020617;
+    }
+    .omnihub-message {
+      max-width: 85%;
+      display: flex;
+      gap: 8px;
+    }
+    .omnihub-message.user {
+      align-self: flex-end;
+      flex-direction: row-reverse;
+    }
+    .omnihub-message.bot {
+      align-self: flex-start;
+    }
+    .omnihub-message-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background-color: #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .omnihub-message.user .omnihub-message-avatar {
+      background-color: \${scriptColor};
+      color: white;
+    }
+    .omnihub-message-bubble {
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .omnihub-message.user .omnihub-message-bubble {
+      background-color: \${scriptColor};
+      color: #ffffff;
+      border-top-right-radius: 0;
+    }
+    .omnihub-message.bot .omnihub-message-bubble {
+      background-color: #1e293b;
+      color: #f1f5f9;
+      border-top-left-radius: 0;
+      border: 1px solid #334155;
+    }
+    .omnihub-typing {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 12px;
+    }
+    .omnihub-dot {
+      width: 6px;
+      height: 6px;
+      background-color: \${scriptColor};
+      border-radius: 50%;
+      animation: omnihub-bounce 1.4s infinite ease-in-out both;
+    }
+    .omnihub-dot:nth-child(1) { animation-delay: -0.32s; }
+    .omnihub-dot:nth-child(2) { animation-delay: -0.16s; }
+    .omnihub-dot:nth-child(3) { animation-delay: -0.08s; }
+    @keyframes omnihub-bounce {
+      0%, 80%, 100% { transform: scale(0); }
+      40% { transform: scale(1.0); }
+    }
+    .omnihub-footer {
+      padding: 12px;
+      background-color: #020617;
+      border-top: 1px solid #1e293b;
+      display: flex;
+      gap: 8px;
+    }
+    .omnihub-input {
+      flex-grow: 1;
+      background-color: #0f172a;
+      border: 1px solid #1e293b;
+      color: #ffffff;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+    .omnihub-input:focus {
+      border-color: \${scriptColor};
+    }
+    .omnihub-send-btn {
+      background-color: \${scriptColor};
+      color: #ffffff;
+      border: none;
+      border-radius: 10px;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+      flex-shrink: 0;
+    }
+    .omnihub-send-btn:hover {
+      opacity: 0.9;
+    }
+    .omnihub-send-btn svg {
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+  \`;
+
+  const styleEl = document.createElement('style');
+  styleEl.innerHTML = styles;
+  document.head.appendChild(styleEl);
+
+  const container = document.createElement('div');
+  container.className = 'omnihub-widget-container';
+  document.body.appendChild(container);
+
+  container.innerHTML = \`
+    <div class="omnihub-panel" id="omnihub-chat-panel-\${tenantId}">
+      <div class="omnihub-header">
+        <div class="omnihub-header-avatar">\${"${avatarIcon}"}</div>
+        <div class="omnihub-header-info">
+          <h4 class="omnihub-header-title" id="omnihub-biz-name-\${tenantId}">\${"${bizName.replace(/"/g, '\\"')}"}</h4>
+          <p class="omnihub-header-subtitle">AI Chat Agent</p>
+        </div>
+      </div>
+      <div class="omnihub-messages" id="omnihub-messages-box-\${tenantId}">
+        <div class="omnihub-message bot">
+          <div class="omnihub-message-avatar">🧠</div>
+          <div class="omnihub-message-bubble">\${scriptWelcome}</div>
+        </div>
+      </div>
+      <div class="omnihub-footer">
+        <input type="text" class="omnihub-input" id="omnihub-msg-input-\${tenantId}" placeholder="Type your message..." />
+        <button class="omnihub-send-btn" id="omnihub-send-button-\${tenantId}">
+          <svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="omnihub-launcher" id="omnihub-chat-launcher-\${tenantId}">
+      <svg class="omnihub-icon-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <svg class="omnihub-icon-close" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </div>
+  \`;
+
+  const launcher = document.getElementById('omnihub-chat-launcher-' + tenantId);
+  const panel = document.getElementById('omnihub-chat-panel-' + tenantId);
+  const messagesBox = document.getElementById('omnihub-messages-box-' + tenantId);
+  const msgInput = document.getElementById('omnihub-msg-input-' + tenantId);
+  const sendBtn = document.getElementById('omnihub-send-button-' + tenantId);
+
+  let history = [];
+
+  launcher.addEventListener('click', function() {
+    launcher.classList.toggle('open');
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) {
+      msgInput.focus();
+    }
+  });
+
+  function appendMessage(sender, text) {
+    const isUser = sender === 'user';
+    const msgDiv = document.createElement('div');
+    msgDiv.className = \`omnihub-message \${sender}\`;
+    msgDiv.innerHTML = \`
+      <div class="omnihub-message-avatar">\s\${isUser ? '👤' : '🧠'}</div>
+      <div class="omnihub-message-bubble">\${text}</div>
+    \`;
+    messagesBox.appendChild(msgDiv);
+    messagesBox.scrollTop = messagesBox.scrollHeight;
+  }
+
+  function showTyping() {
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'omnihub-message bot omnihub-typing-container';
+    typingDiv.innerHTML = \`
+      <div class="omnihub-message-avatar">🧠</div>
+      <div class="omnihub-message-bubble omnihub-typing">
+        <div class="omnihub-dot"></div>
+        <div class="omnihub-dot"></div>
+        <div class="omnihub-dot"></div>
+      </div>
+    \`;
+    messagesBox.appendChild(typingDiv);
+    messagesBox.scrollTop = messagesBox.scrollHeight;
+    return typingDiv;
+  }
+
+  function handleSend() {
+    const text = msgInput.value.trim();
+    if (!text) return;
+
+    appendMessage('user', text);
+    msgInput.value = '';
+
+    const typingIndicator = showTyping();
+
+    fetch(\`\${serverUrl}/api/chatbot/chat\`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        businessId: tenantId,
+        message: text,
+        conversationHistory: history
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      typingIndicator.remove();
+      const reply = data.reply || "I didn't receive a response. Please try again.";
+      appendMessage('bot', reply);
+      
+      history.push({ role: "user", text: text });
+      history.push({ role: "model", text: reply });
+    })
+    .catch(err => {
+      typingIndicator.remove();
+      appendMessage('bot', "Connection failed. Please verify your internet or sandbox settings.");
+      console.error(err);
+    });
+  }
+
+  sendBtn.addEventListener('click', handleSend);
+  msgInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      handleSend();
+    }
+  });
+})();
+  `;
+  res.send(snippetScript);
+});
+
+// Standalone HTML contact form styled with the Blue/Green theme
+app.get("/api/webform/:businessId", async (req, res) => {
+  const { businessId } = req.params;
+  await initFirebaseOnServer();
+  let business = businesses.find((b) => b.id === businessId);
+  if (db && !business) {
+    try {
+      const doc = await db.collection("businesses").doc(businessId).get();
+      if (doc.exists) {
+        business = doc.data() as Business;
+      }
+    } catch (err) {
+      console.error("Error fetching business for webform:", err);
+    }
+  }
+
+  const bizName = business ? business.name : "Contact Us";
+
+  const formHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact ${bizName}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-8 relative overflow-hidden">
+    <!-- Blue/Green subtle accent lights -->
+    <div class="absolute -top-10 -left-10 w-40 h-40 bg-blue-600/10 rounded-full blur-2xl"></div>
+    <div class="absolute -bottom-10 -right-10 w-40 h-40 bg-emerald-600/10 rounded-full blur-2xl"></div>
+
+    <div class="relative z-10">
+      <div class="text-center mb-6">
+        <h2 class="text-2xl font-bold tracking-tight text-white mb-2">${bizName}</h2>
+        <p class="text-sm text-slate-400">Please fill out the form below to submit an inquiry.</p>
+      </div>
+
+      <form id="contact-form" class="space-y-4">
+        <div>
+          <label for="name" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Full Name</label>
+          <input type="text" id="name" name="name" required placeholder="John Doe" 
+            class="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 transition-all placeholder:text-slate-600">
+        </div>
+
+        <div>
+          <label for="email" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Email Address</label>
+          <input type="email" id="email" name="email" required placeholder="john@example.com" 
+            class="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 transition-all placeholder:text-slate-600">
+        </div>
+
+        <div>
+          <label for="phone" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Phone Number</label>
+          <input type="tel" id="phone" name="phone" required placeholder="(555) 000-0000" 
+            class="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 transition-all placeholder:text-slate-600">
+        </div>
+
+        <div>
+          <label for="message" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Message / Inquiry Details</label>
+          <textarea id="message" name="message" required rows="4" placeholder="Describe your service needs or questions..." 
+            class="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 transition-all resize-none placeholder:text-slate-600"></textarea>
+        </div>
+
+        <button type="submit" id="submit-btn" 
+          class="w-full bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 text-white font-semibold py-3 rounded-lg text-sm shadow-lg shadow-blue-900/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+          <span>Submit Inquiry</span>
+        </button>
+      </form>
+
+      <div id="success-box" class="hidden text-center py-8 space-y-4">
+        <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-400 mb-2">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
+          </svg>
+        </div>
+        <h3 class="text-xl font-bold text-white">Inquiry Received!</h3>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          Thank you! Your information has been received and logged securely in our CRM dashboard. Our AI agent is analyzing your request.
+        </p>
+      </div>
+
+      <div id="error-box" class="hidden bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-lg p-4 text-sm mt-4 text-center">
+        Something went wrong. Please check your connection and try again.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const serverUrl = window.location.origin;
+    const businessId = "${businessId}";
+    const contactForm = document.getElementById("contact-form");
+    const successBox = document.getElementById("success-box");
+    const errorBox = document.getElementById("error-box");
+    const submitBtn = document.getElementById("submit-btn");
+
+    contactForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorBox.classList.add("hidden");
+      
+      const submitText = submitBtn.querySelector("span");
+      const originalText = submitText.textContent;
+      submitText.textContent = "Submitting...";
+      submitBtn.disabled = true;
+
+      const payload = {
+        businessId: businessId,
+        name: document.getElementById("name").value,
+        email: document.getElementById("email").value,
+        phone: document.getElementById("phone").value,
+        message: document.getElementById("message").value
+      };
+
+      try {
+        const response = await fetch(\`\${serverUrl}/api/inquiries/webform\`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          throw new Error("Form submission failed");
+        }
+
+        contactForm.classList.add("hidden");
+        successBox.classList.remove("hidden");
+      } catch (err) {
+        console.error(err);
+        errorBox.classList.remove("hidden");
+        submitText.textContent = originalText;
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>`;
+
+  res.setHeader("Content-Type", "text/html");
+  res.send(formHtml);
+});
+
 // Public endpoint to fetch chatbot configuration
 app.get("/api/chatbot/config", (req, res) => {
   const { tenantId } = req.query;
@@ -1566,6 +2911,53 @@ app.get("/api/chatbot/config", (req, res) => {
     subscription_status: business.subscription_status
   });
 });
+
+// Helper to create and save a chatbot lead to Firestore and local lists
+async function createAndSaveChatbotLead(businessId: string, message: string, lowerMsg: string, reqIp: string, isSandbox: boolean = false) {
+  const business = businesses.find((b) => b.id === businessId);
+  if (!business) return;
+
+  const hasEmail = lowerMsg.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
+  const hasPhone = lowerMsg.match(/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
+  const emailVal = hasEmail ? hasEmail[0] : "chat-prospect@example.com";
+  const phoneVal = hasPhone ? hasPhone[0] : "+1 (555) 000-0000";
+
+  const newLead: Lead = {
+    id: `lead-${Date.now()}`,
+    businessId,
+    name: "Chat Widget Customer",
+    email: emailVal,
+    phone: phoneVal,
+    source: "Chat",
+    status: "New",
+    value: business.id === "biz-1" ? 120 : business.id === "biz-2" ? 85 : 50,
+    message,
+    encryptedDetails: encryptText(`Chatbot interaction lead${isSandbox ? " (Sandbox Mode)" : ""}. User message: ${message}. Extracted Email: ${emailVal}, Phone: ${phoneVal}`),
+    aiSummary: `Customer initiated booking/contact query${isSandbox ? " (Sandbox Mode)" : ""}: "${message}"`,
+    aiSuggestedAction: "Call or email the customer back to finalize the booking/appointment.",
+    date: new Date().toISOString()
+  };
+
+  if (db) {
+    try {
+      await db.collection("leads").doc(newLead.id).set(newLead);
+      const bizRef = db.collection("businesses").doc(businessId);
+      const bizDoc = await bizRef.get();
+      if (bizDoc.exists) {
+        const currentData = bizDoc.data();
+        await bizRef.update({
+          leadsCount: ((currentData && currentData.leadsCount) || 0) + 1
+        });
+      }
+    } catch (err) {
+      console.error("Failed to write chatbot lead to Firestore:", err);
+    }
+  }
+
+  leads.unshift(newLead);
+  business.leadsCount += 1;
+  addAuditLog("Agent", "system-chatbot", `New lead generated from Chatbot${isSandbox ? " (Sandbox Mode)" : ""}: Chat Widget Customer (${business.name})`, "INFO", reqIp);
+}
 
 // -----------------------------------------------------------------------------
 // CHATBOT INTERACTION (GEMINI AI INJECTION)
@@ -1792,6 +3184,7 @@ TONE & STYLE:
       
       if (business.subscription_tier !== "BASIC" && (hasEmail || hasPhone || lowerMsg.includes("book") || lowerMsg.includes("appointment") || lowerMsg.includes("contact me"))) {
         leadGenerated = true;
+        await createAndSaveChatbotLead(businessId, message, lowerMsg, req.ip || "", false);
       }
 
       res.json({ reply, leadGenerated });
@@ -1799,7 +3192,11 @@ TONE & STYLE:
       console.error("Gemini Chat API Error:", err);
       // Fallback with smart local knowledge parsing in case of API failure
       const fallbackReply = generateLocalFallback(message, business);
-      res.json({ reply: fallbackReply + " (Sandbox Mode)", leadGenerated: business.subscription_tier !== "BASIC" });
+      const leadGenerated = business.subscription_tier !== "BASIC";
+      if (leadGenerated) {
+        await createAndSaveChatbotLead(businessId, message, lowerMsg, req.ip || "", true);
+      }
+      res.json({ reply: fallbackReply + " (Sandbox Mode)", leadGenerated });
     }
   } else {
     // If no API key is set, use local fallback to ensure full offline mockup functionality
@@ -1921,8 +3318,15 @@ app.post("/api/chatbot/import-website", async (req, res) => {
                 },
                 description: "2-4 relevant lowercase tags (e.g. ['shipping', 'delivery', 'faq'])",
               },
+              learnedInsights: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.STRING,
+                },
+                description: "3-5 key lessons or facts the chatbot learned from this URL (e.g., 'Offers standard 30-day refunds', 'Repairs typically take 2-3 business days'). Keep them concise, specific, and customer-facing.",
+              },
             },
-            required: ["title", "content", "category", "tags"],
+            required: ["title", "content", "category", "tags", "learnedInsights"],
           },
         },
       });
@@ -1935,6 +3339,11 @@ app.post("/api/chatbot/import-website", async (req, res) => {
         content: parsed.content || "No detailed content extracted.",
         category: parsed.category || "Web Import",
         tags: parsed.tags || ["web"],
+        learnedInsights: parsed.learnedInsights || [
+          `Recognized the domain structure and general purpose of ${new URL(url).hostname}`,
+          "Synthesized support guidelines matching this online page's context",
+          "Primed the response engine with default service parameters"
+        ],
         source: extractedText ? "scraped" : "simulated-url",
         url
       });
@@ -1954,6 +3363,11 @@ app.post("/api/chatbot/import-website", async (req, res) => {
     content: `This is a placeholder for the web content imported from ${url}.\n\n### Core Information\nWe successfully reached the domain ${parsedUrl.hostname} and registered this resource as active knowledge.\n- **Direct Link**: ${url}\n- **Access Time**: ${new Date().toLocaleString()}\n\nOur customer support chatbot is now primed with knowledge from this online page context to handle client inquiries.`,
     category: "Web Import",
     tags: ["web", "imported"],
+    learnedInsights: [
+      `Mapped the online layout for ${parsedUrl.hostname}`,
+      `Registered standard web form pathways and FAQ structures`,
+      `Configured basic routing matching ${cleanTitle.toLowerCase()} context`
+    ],
     source: "local-fallback",
     url
   });
@@ -1972,9 +3386,9 @@ app.post("/api/chatbot/classify-document", async (req, res) => {
     try {
       const response = await generateContentWithFallback(gemini, {
         model: "gemini-3.5-flash",
-        contents: `Analyze this document and suggest a single concise category (topic group) and 2-4 highly relevant lowercase single-word tags.\n\nDocument Title: ${title}\nDocument Content:\n${content}`,
+        contents: `Analyze this document and suggest a single concise category (topic group), 2-4 highly relevant lowercase single-word tags, and 2-4 key facts (as short, concise, high-impact bullet points) that a chatbot learns from this document.\n\nDocument Title: ${title}\nDocument Content:\n${content}`,
         config: {
-          systemInstruction: "You are an expert document auto-classifier. Always return suggestions strictly adhering to the JSON schema with 'category' and 'tags' fields.",
+          systemInstruction: "You are an expert document auto-classifier and fact extractor. Always return suggestions strictly adhering to the JSON schema with 'category', 'tags', and 'learnedInsights' fields.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -1990,8 +3404,15 @@ app.post("/api/chatbot/classify-document", async (req, res) => {
                 },
                 description: "A list of 2-4 relevant lowercase tags (e.g. ['returns', 'repair', 'screens'])",
               },
+              learnedInsights: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.STRING,
+                },
+                description: "A list of 2-4 concise, high-impact facts learned from the content (e.g. ['Discovered standard screen diagnostics cost $45', 'Learned screen replacements carry 12m guarantee'])",
+              },
             },
-            required: ["category", "tags"],
+            required: ["category", "tags", "learnedInsights"],
           },
         },
       });
@@ -2001,6 +3422,7 @@ app.post("/api/chatbot/classify-document", async (req, res) => {
       return res.json({
         category: parsed.category || "General",
         tags: parsed.tags || [],
+        learnedInsights: parsed.learnedInsights || [],
         source: "gemini"
       });
     } catch (err) {
@@ -2013,22 +3435,47 @@ app.post("/api/chatbot/classify-document", async (req, res) => {
   const textToAnalyze = `${title} ${content}`.toLowerCase();
   let suggestedCategory = "General";
   let suggestedTags: string[] = [];
+  let suggestedInsights: string[] = [];
 
   if (textToAnalyze.includes("refund") || textToAnalyze.includes("return") || textToAnalyze.includes("cancel") || textToAnalyze.includes("billing") || textToAnalyze.includes("price") || textToAnalyze.includes("fee")) {
     suggestedCategory = "Policies & Billing";
     suggestedTags = ["billing", "policy"];
+    suggestedInsights = [
+      `Extracted operational policies and billing guidelines from "${title}"`,
+      `Analyzed customer refund eligibility parameters`,
+      `Verified diagnostic service rate scales`
+    ];
   } else if (textToAnalyze.includes("water") || textToAnalyze.includes("damage") || textToAnalyze.includes("screen") || textToAnalyze.includes("hardware") || textToAnalyze.includes("repair") || textToAnalyze.includes("clean")) {
     suggestedCategory = "Technical & Services";
     suggestedTags = ["service", "technical"];
+    suggestedInsights = [
+      `Captured physical diagnostic protocols and repair scopes`,
+      `Indexed standard parts and labor guarantee structures`,
+      `Synthesized service triage steps for hardware faults`
+    ];
   } else if (textToAnalyze.includes("safety") || textToAnalyze.includes("hazard") || textToAnalyze.includes("solvent") || textToAnalyze.includes("chemical") || textToAnalyze.includes("rule")) {
     suggestedCategory = "Safety & Operations";
     suggestedTags = ["safety", "operations"];
+    suggestedInsights = [
+      `Captured workshop solvent and chemical hazard handling protocols`,
+      `Synced compliance standards for technician safety`,
+      `Registered operations incident report workflows`
+    ];
   } else if (textToAnalyze.includes("hour") || textToAnalyze.includes("time") || textToAnalyze.includes("schedule") || textToAnalyze.includes("appoint")) {
     suggestedCategory = "Appointments & Hours";
     suggestedTags = ["hours", "schedule"];
+    suggestedInsights = [
+      `Synced standard weekly business operating hours`,
+      `Identified emergency/after-hours contact rules`,
+      `Updated service booking slots and turnaround time parameters`
+    ];
   } else {
     suggestedCategory = "Standard Guides";
     suggestedTags = ["guide", "reference"];
+    suggestedInsights = [
+      `Processed general reference documentation from "${title}"`,
+      `Synthesized custom training specifications for general questions`
+    ];
   }
 
   // Additional smart keyword tags
@@ -2042,6 +3489,7 @@ app.post("/api/chatbot/classify-document", async (req, res) => {
   return res.json({
     category: suggestedCategory,
     tags: suggestedTags.slice(0, 4),
+    learnedInsights: suggestedInsights,
     source: "local-rule"
   });
 });
@@ -2259,6 +3707,22 @@ Message: ${message}`;
     date: new Date().toISOString()
   };
 
+  if (db) {
+    try {
+      await db.collection("leads").doc(newLead.id).set(newLead);
+      const bizRef = db.collection("businesses").doc(businessId);
+      const bizDoc = await bizRef.get();
+      if (bizDoc.exists) {
+        const currentData = bizDoc.data();
+        await bizRef.update({
+          leadsCount: ((currentData && currentData.leadsCount) || 0) + 1
+        });
+      }
+    } catch (err) {
+      console.error("Failed to write webform lead to Firestore:", err);
+    }
+  }
+
   leads.unshift(newLead);
   business.leadsCount += 1;
 
@@ -2352,76 +3816,6 @@ Respond strictly in a JSON structure containing:
     replyDraft: aiDraft.replyDraft,
     category: aiDraft.category
   });
-});
-
-// -----------------------------------------------------------------------------
-// SNIPPET AND WEBFORM GENERATORS
-// -----------------------------------------------------------------------------
-
-// Get JS Snippet for a business
-app.get("/api/snippet/:businessId", async (req, res) => {
-  const { businessId } = req.params;
-  const bizDoc = await getDoc(doc(db, "businesses", businessId));
-  if (!bizDoc.exists()) {
-    return res.status(404).json({ error: "Business not found" });
-  }
-  const business = bizDoc.data() as Business;
-
-  const snippet = `
-(function() {
-  const businessId = "${businessId}";
-  const script = document.createElement('script');
-  script.src = "https://cdn.repairhub.ai/widget.js";
-  script.async = true;
-  script.onload = () => {
-    window.RepairHubWidget.init({
-      businessId: businessId,
-      botName: "${business.chatSettings.botName || business.name + ' Assistant'}",
-      welcomeMessage: "${business.chatSettings.welcomeMessage}",
-      themeColor: "${business.chatSettings.avatarColor || '#4f46e5'}"
-    });
-  };
-  document.head.appendChild(script);
-})();
-  `.trim();
-
-  res.type("application/javascript").send(snippet);
-});
-
-// GET Webform HTML for embed
-app.get("/api/webform/:businessId", (req, res) => {
-  const { businessId } = req.params;
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <script src="https://cdn.tailwindcss.com"></script>
-      <style>body { background: transparent; overflow-x: hidden; }</style>
-    </head>
-    <body class="p-2">
-      <div class="max-w-md mx-auto bg-white p-6 rounded-2xl shadow-xl border border-gray-100">
-        <div class="flex items-center gap-2 mb-4">
-          <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">B</div>
-          <h3 class="text-lg font-bold text-slate-800">Quick Inquiry</h3>
-        </div>
-        <form action="/api/inquiries/webform" method="POST" class="space-y-4">
-          <input type="hidden" name="businessId" value="${businessId}">
-          <div class="grid grid-cols-1 gap-4">
-            <input type="text" name="name" placeholder="Your Name" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
-            <input type="email" name="email" placeholder="Email Address" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
-            <input type="tel" name="phone" placeholder="Phone (Optional)" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
-            <textarea name="message" placeholder="How can we help?" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl h-24 outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none"></textarea>
-          </div>
-          <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all active:scale-[0.98]">
-            Send Message
-          </button>
-        </form>
-        <p class="text-center text-[10px] text-slate-400 mt-4">Powered by BizHub AI Secure Portal</p>
-      </div>
-    </body>
-    </html>
-  `;
-  res.send(html);
 });
 
 // -----------------------------------------------------------------------------

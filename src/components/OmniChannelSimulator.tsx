@@ -37,11 +37,13 @@ import { Business, Lead } from "../types";
 interface OmniChannelSimulatorProps {
   businesses: Business[];
   onNewLeadCreated: (lead: Lead) => void;
+  showAdvancedSaaS?: boolean;
 }
 
 export default function OmniChannelSimulator({
   businesses,
-  onNewLeadCreated
+  onNewLeadCreated,
+  showAdvancedSaaS = false
 }: OmniChannelSimulatorProps) {
   const [activeSubTab, setActiveSubTab] = useState<"webform" | "email" | "messenger" | "websites">("webform");
   const [targetBizId, setTargetBizId] = useState(businesses[0]?.id || "");

@@ -41,6 +41,7 @@ interface LeadsManagerProps {
   activeRole: "Admin" | "Manager" | "Agent";
   userEmail: string;
   onNewLeadCreated?: (newLead: Lead) => void;
+  showAdvancedSaaS?: boolean;
 }
 
 export default function LeadsManager({
@@ -49,7 +50,8 @@ export default function LeadsManager({
   onUpdateLead,
   activeRole,
   userEmail,
-  onNewLeadCreated
+  onNewLeadCreated,
+  showAdvancedSaaS = false
 }: LeadsManagerProps) {
   // Top level tab state
   const [activeSubTab, setActiveSubTab] = useState<"leads-ledger" | "unified-inbox-mobile" | "firebase-webhook">("leads-ledger");
@@ -597,19 +599,23 @@ export const handleWhatsAppLeadWebhook = functions.https.onRequest(async (req, r
             <Smartphone size={14} className="text-emerald-500" /> Unified Mobile Inbox
           </button>
           
-          <button
-            onClick={() => setActiveSubTab("firebase-webhook")}
-            className={`flex-1 sm:flex-none px-4 py-2 text-xs font-semibold rounded-lg font-sans transition flex items-center justify-center gap-1.5 ${
-              activeSubTab === "firebase-webhook" ? "bg-white text-indigo-950 shadow-sm" : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <FileCode size={14} className="text-violet-500" /> WhatsApp Hook & DB Logic
-          </button>
+          {showAdvancedSaaS && (
+            <button
+              onClick={() => setActiveSubTab("firebase-webhook")}
+              className={`flex-1 sm:flex-none px-4 py-2 text-xs font-semibold rounded-lg font-sans transition flex items-center justify-center gap-1.5 ${
+                activeSubTab === "firebase-webhook" ? "bg-white text-indigo-950 shadow-sm" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <FileCode size={14} className="text-violet-500" /> WhatsApp Hook & DB Logic
+            </button>
+          )}
         </div>
 
-        <div className="text-[10px] text-slate-400 font-mono self-end sm:self-center">
-          ACTIVE GATEKEEPER NODE: <strong className="text-indigo-600">FIRESTORE-E2E</strong>
-        </div>
+        {showAdvancedSaaS && (
+          <div className="text-[10px] text-slate-400 font-mono self-end sm:self-center">
+            ACTIVE GATEKEEPER NODE: <strong className="text-indigo-600">FIRESTORE-E2E</strong>
+          </div>
+        )}
       </div>
 
       {/* -----------------------------------------------------------------------
@@ -801,60 +807,62 @@ export const handleWhatsAppLeadWebhook = functions.https.onRequest(async (req, r
                 </div>
 
                 {/* SECURITY: Cryptography Safeguard */}
-                <div className="bg-indigo-50/60 border border-indigo-100 p-4 rounded-xl space-y-3" id="database-encryption-box">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Lock size={15} className="text-indigo-600 animate-pulse" />
-                      <span className="text-xs font-mono text-indigo-700 font-bold uppercase tracking-wide">End-to-End Cryptography Log Safeguard</span>
-                    </div>
-                    <span className="px-2 py-0.5 text-[9px] uppercase font-mono bg-indigo-100 text-indigo-700 border border-indigo-200 rounded">
-                      AES-256 CIPHER
-                    </span>
-                  </div>
-
-                  <p className="text-[10px] text-slate-600 leading-relaxed">
-                    All client transcripts, addresses, and sensitive interactions are stored as encrypted cipher texts in our central cloud vault, satisfying corporate privacy frameworks.
-                  </p>
-
-                  <div className="bg-slate-900 border border-slate-885 p-3 rounded-lg text-[9px] font-mono text-indigo-300 break-all max-h-16 overflow-y-auto">
-                    {activeLead.encryptedDetails}
-                  </div>
-
-                  <div className="pt-1 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                    <button
-                      onClick={handleDecryptDetails}
-                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-sans text-[11px] font-semibold rounded-lg transition duration-150 flex items-center gap-1.5 cursor-pointer shadow-sm"
-                      id="decrypt-logs-btn"
-                    >
-                      <Unlock size={12} /> Decrypt Customer Metadata Record
-                    </button>
-                    <span className="text-[10px] text-slate-400 italic font-mono">
-                      Active Operator Role: {activeRole}
-                    </span>
-                  </div>
-
-                  {decryptedText && (
-                    <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-lg text-xs space-y-1.5 animate-fade-in" id="decrypted-result-box">
-                      <span className="text-[10px] font-mono text-emerald-700 uppercase tracking-wider font-bold block flex items-center gap-1">
-                        🔓 Decrypted Interaction Transcript (Decryption Audit Logged)
+                {showAdvancedSaaS && (
+                  <div className="bg-indigo-50/60 border border-indigo-100 p-4 rounded-xl space-y-3" id="database-encryption-box">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Lock size={15} className="text-indigo-600 animate-pulse" />
+                        <span className="text-xs font-mono text-indigo-700 font-bold uppercase tracking-wide">End-to-End Cryptography Log Safeguard</span>
+                      </div>
+                      <span className="px-2 py-0.5 text-[9px] uppercase font-mono bg-indigo-100 text-indigo-700 border border-indigo-200 rounded">
+                        AES-256 CIPHER
                       </span>
-                      <p className="text-emerald-950 leading-relaxed font-sans text-xs">
-                        {decryptedText}
-                      </p>
                     </div>
-                  )}
 
-                  {decryptionError && (
-                    <div className="bg-red-50 border border-red-200 p-3.5 rounded-lg text-xs space-y-1.5 animate-fade-in" id="decryption-denied-box">
-                      <span className="text-[10px] font-mono text-red-700 uppercase tracking-wider font-bold block flex items-center gap-1.5">
-                        <AlertTriangle size={13} className="text-red-500" /> Security Access Restriction
-                      </span>
-                      <p className="text-red-950 leading-relaxed font-sans text-xs">
-                        {decryptionError}
-                      </p>
+                    <p className="text-[10px] text-slate-600 leading-relaxed">
+                      All client transcripts, addresses, and sensitive interactions are stored as encrypted cipher texts in our central cloud vault, satisfying corporate privacy frameworks.
+                    </p>
+
+                    <div className="bg-slate-900 border border-slate-885 p-3 rounded-lg text-[9px] font-mono text-indigo-300 break-all max-h-16 overflow-y-auto">
+                      {activeLead.encryptedDetails}
                     </div>
-                  )}
-                </div>
+
+                    <div className="pt-1 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                      <button
+                        onClick={handleDecryptDetails}
+                        className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-sans text-[11px] font-semibold rounded-lg transition duration-150 flex items-center gap-1.5 cursor-pointer shadow-sm"
+                        id="decrypt-logs-btn"
+                      >
+                        <Unlock size={12} /> Decrypt Customer Metadata Record
+                      </button>
+                      <span className="text-[10px] text-slate-400 italic font-mono">
+                        Active Operator Role: {activeRole}
+                      </span>
+                    </div>
+
+                    {decryptedText && (
+                      <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-lg text-xs space-y-1.5 animate-fade-in" id="decrypted-result-box">
+                        <span className="text-[10px] font-mono text-emerald-700 uppercase tracking-wider font-bold block flex items-center gap-1">
+                          🔓 Decrypted Interaction Transcript (Decryption Audit Logged)
+                        </span>
+                        <p className="text-emerald-950 leading-relaxed font-sans text-xs">
+                          {decryptedText}
+                        </p>
+                      </div>
+                    )}
+
+                    {decryptionError && (
+                      <div className="bg-red-50 border border-red-200 p-3.5 rounded-lg text-xs space-y-1.5 animate-fade-in" id="decryption-denied-box">
+                        <span className="text-[10px] font-mono text-red-700 uppercase tracking-wider font-bold block flex items-center gap-1.5">
+                          <AlertTriangle size={13} className="text-red-500" /> Security Access Restriction
+                        </span>
+                        <p className="text-red-950 leading-relaxed font-sans text-xs">
+                          {decryptionError}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Gemini AI Summary & Suggested actions */}
                 <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-4">
@@ -876,56 +884,58 @@ export const handleWhatsAppLeadWebhook = functions.https.onRequest(async (req, r
                 </div>
 
                 {/* CRM synchronization connections block */}
-                <div className="space-y-3" id="crm-integrations-box">
-                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">CRM Portals Synchronization Integration</h4>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg flex items-center justify-between">
-                      <div>
-                        <span className="text-[11px] font-bold text-slate-800 block">Salesforce CRM</span>
-                        <span className="text-[9px] text-slate-400 font-mono">Sync Code: SF-1290</span>
+                {showAdvancedSaaS && (
+                  <div className="space-y-3" id="crm-integrations-box">
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">CRM Portals Synchronization Integration</h4>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg flex items-center justify-between">
+                        <div>
+                          <span className="text-[11px] font-bold text-slate-800 block">Salesforce CRM</span>
+                          <span className="text-[9px] text-slate-400 font-mono">Sync Code: SF-1290</span>
+                        </div>
+                        <button
+                          onClick={() => handleCrmSync("Salesforce")}
+                          className="px-2.5 py-1.5 bg-white hover:bg-indigo-600 text-slate-700 hover:text-white rounded border border-slate-200 hover:border-transparent transition text-[10px] font-semibold flex items-center gap-1 cursor-pointer shadow-sm"
+                        >
+                          {syncSuccess === "Salesforce" ? <Check size={12} className="text-emerald-600" /> : <Share2 size={12} />} Push
+                        </button>
                       </div>
-                      <button
-                        onClick={() => handleCrmSync("Salesforce")}
-                        className="px-2.5 py-1.5 bg-white hover:bg-indigo-600 text-slate-700 hover:text-white rounded border border-slate-200 hover:border-transparent transition text-[10px] font-semibold flex items-center gap-1 cursor-pointer shadow-sm"
-                      >
-                        {syncSuccess === "Salesforce" ? <Check size={12} className="text-emerald-600" /> : <Share2 size={12} />} Push
-                      </button>
+
+                      <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg flex items-center justify-between">
+                        <div>
+                          <span className="text-[11px] font-bold text-slate-800 block">HubSpot Suite</span>
+                          <span className="text-[9px] text-slate-400 font-mono">Sync Code: HS-4801</span>
+                        </div>
+                        <button
+                          onClick={() => handleCrmSync("HubSpot")}
+                          className="px-2.5 py-1.5 bg-white hover:bg-indigo-600 text-slate-700 hover:text-white rounded border border-slate-200 hover:border-transparent transition text-[10px] font-semibold flex items-center gap-1 cursor-pointer shadow-sm"
+                        >
+                          {syncSuccess === "HubSpot" ? <Check size={12} className="text-emerald-600" /> : <Share2 size={12} />} Push
+                        </button>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg flex items-center justify-between">
+                        <div>
+                          <span className="text-[11px] font-bold text-slate-800 block">Zoho CRM</span>
+                          <span className="text-[9px] text-slate-400 font-mono">Sync Code: ZH-7719</span>
+                        </div>
+                        <button
+                          onClick={() => handleCrmSync("Zoho")}
+                          className="px-2.5 py-1.5 bg-white hover:bg-indigo-600 text-slate-700 hover:text-white rounded border border-slate-200 hover:border-transparent transition text-[10px] font-semibold flex items-center gap-1 cursor-pointer shadow-sm"
+                        >
+                          {syncSuccess === "Zoho" ? <Check size={12} className="text-emerald-600" /> : <Share2 size={12} />} Push
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg flex items-center justify-between">
-                      <div>
-                        <span className="text-[11px] font-bold text-slate-800 block">HubSpot Suite</span>
-                        <span className="text-[9px] text-slate-400 font-mono">Sync Code: HS-4801</span>
+                    {syncingCrm && (
+                      <div className="text-[10px] font-mono text-indigo-600 flex items-center gap-1.5 animate-pulse">
+                        <Database size={11} /> Synchronizing lead state with secure {syncingCrm} CRM pipeline REST API...
                       </div>
-                      <button
-                        onClick={() => handleCrmSync("HubSpot")}
-                        className="px-2.5 py-1.5 bg-white hover:bg-indigo-600 text-slate-700 hover:text-white rounded border border-slate-200 hover:border-transparent transition text-[10px] font-semibold flex items-center gap-1 cursor-pointer shadow-sm"
-                      >
-                        {syncSuccess === "HubSpot" ? <Check size={12} className="text-emerald-600" /> : <Share2 size={12} />} Push
-                      </button>
-                    </div>
-
-                    <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg flex items-center justify-between">
-                      <div>
-                        <span className="text-[11px] font-bold text-slate-800 block">Zoho CRM</span>
-                        <span className="text-[9px] text-slate-400 font-mono">Sync Code: ZH-7719</span>
-                      </div>
-                      <button
-                        onClick={() => handleCrmSync("Zoho")}
-                        className="px-2.5 py-1.5 bg-white hover:bg-indigo-600 text-slate-700 hover:text-white rounded border border-slate-200 hover:border-transparent transition text-[10px] font-semibold flex items-center gap-1 cursor-pointer shadow-sm"
-                      >
-                        {syncSuccess === "Zoho" ? <Check size={12} className="text-emerald-600" /> : <Share2 size={12} />} Push
-                      </button>
-                    </div>
+                    )}
                   </div>
-
-                  {syncingCrm && (
-                    <div className="text-[10px] font-mono text-indigo-600 flex items-center gap-1.5 animate-pulse">
-                      <Database size={11} /> Synchronizing lead state with secure {syncingCrm} CRM pipeline REST API...
-                    </div>
-                  )}
-                </div>
+                )}
 
                 {/* Custom Notes */}
                 <div className="space-y-3 pt-3 border-t border-slate-100">
