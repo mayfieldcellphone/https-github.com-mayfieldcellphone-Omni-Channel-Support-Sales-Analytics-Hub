@@ -2355,6 +2355,76 @@ Respond strictly in a JSON structure containing:
 });
 
 // -----------------------------------------------------------------------------
+// SNIPPET AND WEBFORM GENERATORS
+// -----------------------------------------------------------------------------
+
+// Get JS Snippet for a business
+app.get("/api/snippet/:businessId", async (req, res) => {
+  const { businessId } = req.params;
+  const bizDoc = await getDoc(doc(db, "businesses", businessId));
+  if (!bizDoc.exists()) {
+    return res.status(404).json({ error: "Business not found" });
+  }
+  const business = bizDoc.data() as Business;
+
+  const snippet = `
+(function() {
+  const businessId = "${businessId}";
+  const script = document.createElement('script');
+  script.src = "https://cdn.repairhub.ai/widget.js";
+  script.async = true;
+  script.onload = () => {
+    window.RepairHubWidget.init({
+      businessId: businessId,
+      botName: "${business.chatSettings.botName || business.name + ' Assistant'}",
+      welcomeMessage: "${business.chatSettings.welcomeMessage}",
+      themeColor: "${business.chatSettings.avatarColor || '#4f46e5'}"
+    });
+  };
+  document.head.appendChild(script);
+})();
+  `.trim();
+
+  res.type("application/javascript").send(snippet);
+});
+
+// GET Webform HTML for embed
+app.get("/api/webform/:businessId", (req, res) => {
+  const { businessId } = req.params;
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script src="https://cdn.tailwindcss.com"></script>
+      <style>body { background: transparent; overflow-x: hidden; }</style>
+    </head>
+    <body class="p-2">
+      <div class="max-w-md mx-auto bg-white p-6 rounded-2xl shadow-xl border border-gray-100">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">B</div>
+          <h3 class="text-lg font-bold text-slate-800">Quick Inquiry</h3>
+        </div>
+        <form action="/api/inquiries/webform" method="POST" class="space-y-4">
+          <input type="hidden" name="businessId" value="${businessId}">
+          <div class="grid grid-cols-1 gap-4">
+            <input type="text" name="name" placeholder="Your Name" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+            <input type="email" name="email" placeholder="Email Address" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+            <input type="tel" name="phone" placeholder="Phone (Optional)" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+            <textarea name="message" placeholder="How can we help?" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl h-24 outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none"></textarea>
+          </div>
+          <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all active:scale-[0.98]">
+            Send Message
+          </button>
+        </form>
+        <p class="text-center text-[10px] text-slate-400 mt-4">Powered by BizHub AI Secure Portal</p>
+      </div>
+    </body>
+    </html>
+  `;
+  res.send(html);
+});
+
+// -----------------------------------------------------------------------------
 // VITE AND ASSETS SERVER SETUP
 // -----------------------------------------------------------------------------
 async function startServer() {

@@ -63,10 +63,8 @@ export const OnboardingWizard: React.FC = () => {
 
   const steps = [
     { id: 1, title: 'Identity', icon: Building2 },
-    { id: 2, title: 'Persona', icon: Sparkles },
-    { id: 3, title: 'Knowledge', icon: Database },
-    { id: 4, title: 'WhatsApp', icon: MessageSquare },
-    { id: 5, title: 'Review', icon: CheckCircle2 }
+    { id: 2, title: 'Knowledge', icon: Database },
+    { id: 3, title: 'Launch', icon: CheckCircle2 }
   ];
 
   const renderStep = () => {
@@ -74,180 +72,98 @@ export const OnboardingWizard: React.FC = () => {
       case 1:
         return (
           <motion.div 
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
             className="space-y-4"
           >
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Business Identity</h2>
-            <p className="text-gray-500">Tell us about your business to get started.</p>
+            <h2 className="text-2xl font-bold text-gray-800">1. Your Business</h2>
+            <p className="text-gray-500">What business are we setting up today?</p>
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Business Name</label>
-                <input 
-                  type="text" 
-                  value={state.businessName}
-                  onChange={e => setState(prev => ({ ...prev, businessName: e.target.value }))}
-                  className="w-full p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                  placeholder="e.g. Mayfield Cellphone Repairs"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Industry Category</label>
-                <select 
-                  value={state.category}
-                  onChange={e => setState(prev => ({ ...prev, category: e.target.value }))}
-                  className="w-full p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                >
-                  <option value="">Select Category</option>
-                  <option value="Repair">Device Repairs</option>
-                  <option value="Retail">Retail & E-commerce</option>
-                  <option value="SaaS">SaaS & Software</option>
-                  <option value="Other">Other Services</option>
-                </select>
-              </div>
+              <input 
+                type="text" 
+                value={state.businessName}
+                onChange={e => setState(prev => ({ ...prev, businessName: e.target.value }))}
+                className="w-full p-4 bg-white border border-gray-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                placeholder="Business Name (e.g. SelfRepairKit)"
+              />
+              <select 
+                value={state.category}
+                onChange={e => setState(prev => ({ ...prev, category: e.target.value }))}
+                className="w-full p-4 bg-white border border-gray-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+              >
+                <option value="">Select Industry</option>
+                <option value="Retail">E-commerce / Retail</option>
+                <option value="Repair">Local Service / Repair</option>
+                <option value="SaaS">Software / SaaS</option>
+              </select>
             </div>
           </motion.div>
         );
       case 2:
         return (
           <motion.div 
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
             className="space-y-4"
           >
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Gemini Persona</h2>
-            <p className="text-gray-500">Choose how your AI assistant should sound.</p>
-            <div className="grid grid-cols-1 gap-3">
-              {(['Friendly', 'Professional', 'Energetic'] as const).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setState(prev => ({ ...prev, persona: p }))}
-                  className={`p-4 rounded-xl border-2 text-left transition-all ${
-                    state.persona === p 
-                    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' 
-                    : 'border-gray-100 dark:border-gray-800 hover:border-indigo-200'
-                  }`}
-                >
-                  <div className="font-semibold text-gray-800 dark:text-white">{p}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {p === 'Friendly' && 'Approachable, warm, and helpful.'}
-                    {p === 'Professional' && 'Concise, efficient, and authoritative.'}
-                    {p === 'Energetic' && 'Enthusiastic, proactive, and positive.'}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </motion.div>
-        );
-      case 3:
-        return (
-          <motion.div 
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="space-y-4"
-          >
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Knowledge Ingestion</h2>
-            <p className="text-gray-500">Feed your bot with data it can learn from.</p>
-            <div className="flex gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg">
-              {(['FAQ', 'URL'] as const).map((s) => (
+            <h2 className="text-2xl font-bold text-gray-800">2. Train AI</h2>
+            <p className="text-gray-500">Paste a URL or drop content. AI will learn your business instantly.</p>
+            <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
+              {['FAQ', 'URL'].map((s) => (
                 <button
                   key={s}
-                  onClick={() => setState(prev => ({ ...prev, knowledgeSource: s }))}
-                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${
-                    state.knowledgeSource === s ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-gray-500'
+                  onClick={() => setState(prev => ({ ...prev, knowledgeSource: s as any }))}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
+                    state.knowledgeSource === s ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'
                   }`}
                 >
-                  {s}
+                  {s === 'FAQ' ? 'Manual Text' : 'Website URL'}
                 </button>
               ))}
             </div>
             <textarea 
               value={state.knowledgeValue}
               onChange={e => setState(prev => ({ ...prev, knowledgeValue: e.target.value }))}
-              rows={4}
-              className="w-full p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-              placeholder={state.knowledgeSource === 'FAQ' ? "Paste your FAQ text here..." : "Enter documentation URL..."}
+              rows={5}
+              className="w-full p-4 bg-white border border-gray-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
+              placeholder={state.knowledgeSource === 'FAQ' ? "Paste details, policies, or FAQs..." : "https://selfrepairkit.com.au"}
             />
           </motion.div>
         );
-      case 4:
+      case 3:
         return (
           <motion.div 
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="space-y-4"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
           >
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">WhatsApp Integration</h2>
-            <p className="text-gray-500">Connect your business WhatsApp account.</p>
-            <div className="bg-green-50 dark:bg-green-900/10 p-4 rounded-xl border border-green-100 dark:border-green-900/30 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white">
-                <MessageSquare size={20} />
+            <div className="text-center">
+              <div className="inline-flex p-3 bg-green-100 text-green-600 rounded-full mb-2">
+                <CheckCircle2 size={32} />
               </div>
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-green-800 dark:text-green-400">WhatsApp Meta ID</div>
-                <div className="text-xs text-green-600/80">Pre-configured for your account</div>
-              </div>
-            </div>
-            <input 
-              type="text" 
-              readOnly
-              value={state.whatsappId}
-              className="w-full p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-400 cursor-not-allowed"
-            />
-            <p className="text-[10px] text-gray-400 italic">This ID is linked to your developer sandbox for instant testing.</p>
-          </motion.div>
-        );
-      case 5:
-        return (
-          <motion.div 
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="space-y-4"
-          >
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Review & Snippet</h2>
-            <div className="bg-indigo-600 rounded-2xl p-6 text-white shadow-xl">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-white/20 rounded-lg">
-                  <CheckCircle2 size={24} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg">{state.businessName || 'Your AI Bot'}</h3>
-                  <p className="text-white/70 text-sm">Ready for deployment</p>
-                </div>
-              </div>
-              <div className="space-y-2 text-sm text-white/90">
-                <div className="flex justify-between">
-                  <span>Persona:</span>
-                  <span className="font-medium">{state.persona}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Knowledge:</span>
-                  <span className="font-medium">{state.knowledgeSource} ({state.knowledgeValue ? 'Loaded' : 'None'})</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>WhatsApp:</span>
-                  <span className="font-medium">Connected</span>
-                </div>
-              </div>
+              <h2 className="text-2xl font-bold text-gray-800">AI is Ready!</h2>
+              <p className="text-gray-500">Copy these codes to your site to start talking to customers.</p>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Embed Snippet</label>
-              <div className="relative group">
-                <pre className="bg-gray-900 text-indigo-300 p-4 rounded-xl text-xs overflow-x-auto border border-gray-800">
-                  {`<script src="/api/snippet/${state.businessId}"></script>`}
-                </pre>
-                <button 
-                  onClick={copySnippet}
-                  className="absolute top-2 right-2 p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all backdrop-blur-sm"
-                >
-                  {copied ? <Check size={16} className="text-green-400" /> : <Copy size={16} />}
-                </button>
+            <div className="space-y-4 text-left">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">1. Chatbot Widget</label>
+                <div className="relative mt-1">
+                  <pre className="bg-slate-900 text-indigo-300 p-3 rounded-xl text-[10px] overflow-x-auto border border-slate-800">
+                    {`<script src="/api/snippet/${state.businessId}"></script>`}
+                  </pre>
+                  <button onClick={() => copyToClipboard(`<script src="/api/snippet/${state.businessId}"></script>`)} className="absolute top-2 right-2 text-white/50 hover:text-white"><Copy size={14}/></button>
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">2. Lead Capture Webform</label>
+                <div className="relative mt-1">
+                  <pre className="bg-slate-900 text-emerald-300 p-3 rounded-xl text-[10px] overflow-x-auto border border-slate-800">
+                    {`<iframe src="/api/webform/${state.businessId}" width="100%" height="500"></iframe>`}
+                  </pre>
+                  <button onClick={() => copyToClipboard(`<iframe src="/api/webform/${state.businessId}" width="100%" height="500"></iframe>`)} className="absolute top-2 right-2 text-white/50 hover:text-white"><Copy size={14}/></button>
+                </div>
               </div>
             </div>
           </motion.div>
@@ -255,6 +171,12 @@ export const OnboardingWizard: React.FC = () => {
       default:
         return null;
     }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
